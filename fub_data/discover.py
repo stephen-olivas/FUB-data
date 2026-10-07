@@ -154,7 +154,7 @@ def run_discovery(
     out["tags"] = tag_counts.most_common(100)
 
     # --- geography ---------------------------------------------------------
-    service = load_service_zips(criteria.get("service_zip_files", []), ROOT)
+    service = load_service_zips(criteria, ROOT)
     geo = Counter()
     states = Counter()
     for p in people:

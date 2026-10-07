@@ -22,7 +22,7 @@ PEOPLE = [  # newest first, like the API
     person(108, "2026-10-03T18:00:00Z", addresses=[{"code": "59001"}]),                               # rural
     person(107, "2026-10-02T18:00:00Z", addresses=[{"code": "89002"}]),                               # opp via inbound text
     person(106, "2026-10-01T18:00:00Z", addresses=[{"code": "80002"}]),                               # outbound text only -> qualified
-    person(105, "2026-09-30T18:00:00Z", stage="Referred Out/Appointment Set", addresses=[{"code": "37011"}]),  # opp via stage, Nashville (preferred)
+    person(105, "2026-09-30T18:00:00Z", stage="Referred Out/Appointment Set", addresses=[{"code": "37011"}]),  # opp via stage, Nashville (core metro)
     person(104, "2026-09-29T18:00:00Z"),                                                              # licensed agent via note, no zip
     person(103, "2026-09-28T08:30:00Z", addresses=[{"code": "85004"}], contacted=0,
            customNotesRedFlags="Owner says house is in pre-foreclosure"),              # first day of window (PT)

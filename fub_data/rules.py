@@ -197,7 +197,7 @@ class Classification:
     zip: str | None
     zip_origin: str | None
     market: str | None
-    service_tier: str | None = None  # which zip list matched, e.g. core_market / preferred
+    geo_tier: str | None = None  # geo_tiers id the zip matched (res_core / core_metro / other_metro)
 
 
 def classify(ctx: LeadContext, criteria: dict) -> Classification:
@@ -216,7 +216,7 @@ def classify(ctx: LeadContext, criteria: dict) -> Classification:
     zip_, origin = (zips[0] if zips else (None, None))
     zrow = (ctx.service_zips.get(zip_) or {}) if zip_ else {}
     market = zrow.get("market")
-    tier = zrow["_list"].removesuffix("_zips") if zrow.get("_list") else None
+    tier = zrow.get("_tier")
     if not zip_:
         flags.append("no_zip_found")
 

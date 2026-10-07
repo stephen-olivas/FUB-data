@@ -29,13 +29,29 @@ timezone: America/Los_Angeles
 # `trash` below).
 include_trash: true
 
-# Seller-property zips we can service: the 5 RES core markets plus Nashville.
-# The CSV's service_tier column says which list matched.
-#   core_market - ReSvcs Zips All Core Markets.xlsx (Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs)
-#   nashville   - Nashville column of the "Preferred Zip codes - Bonus" sheet
-service_zip_files:
-  - data/core_market_zips.csv
-  - data/nashville_zips.csv
+# Geography tiers. A lead's property zip takes the FIRST tier it matches;
+# a zip in none of them is rural / out of area (rule `rural_geo`).
+# The report shows the funnel for each tier, plus "core markets overall"
+# (res_core + core_metro).
+#   res_core    - ReSvcs Zips All Core Markets.xlsx (RES-specific zips in
+#                 Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs)
+#   core_metro  - rest of those 5 metros + Nashville, from the
+#                 "Preferred Zip codes - Bonus" sheet
+#   other_metro - every other metro on that sheet
+geo_tiers:
+  - id: res_core
+    label: RES core zips
+    files: [data/core_market_zips.csv]
+  - id: core_metro
+    label: Core market metro (outside RES list)
+    files: [data/preferred_zips.csv]
+    markets: [Atlanta, Phoenix, Las Vegas, Denver, Colorado Springs, Nashville]
+  - id: other_metro
+    label: Other preferred metro
+    files: [data/preferred_zips.csv]
+
+# Tiers that together make up "core markets overall" in the summary.
+core_market_tiers: [res_core, core_metro]
 
 # Person fields scanned as free text by keyword rules (search_in: fields).
 text_fields:

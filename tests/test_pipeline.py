@@ -44,9 +44,9 @@ def test_report_end_to_end(tmp_path):
     assert rows[107]["status"] == "Opportunity"          # inbound text
     assert rows[106]["status"] == "Qualified"            # outbound rep text ignored
     assert rows[105]["status"] == "Opportunity"          # stage
-    assert rows[105]["service_tier"] == "nashville" and rows[105]["market"] == "Nashville"
+    assert rows[105]["geo_tier"] == "core_metro" and rows[105]["market"] == "Nashville"
     assert rows[103]["primary_unqualified_reason"] == "short_sale_or_foreclosure"  # customNotesRedFlags
-    assert rows[110]["service_tier"] == "core_market"
+    assert rows[110]["geo_tier"] == "res_core"
     assert rows[110]["status"] == "Qualified" and rows[110]["market"] == "Phoenix"
     assert rows[110]["zip_origin"] == "event_property"
 
@@ -55,6 +55,13 @@ def test_report_end_to_end(tmp_path):
     assert s["opportunities"] == 2
     assert s["qualified_including_opportunities"] == 4
     assert s["by_stage"]["Referred Out/Appointment Set"] == {"Opportunity": 1}
+    geo = {g["segment"]: g for g in s["by_geography"]}
+    assert geo["RES core zips"]["leads"] == 5
+    assert geo["Core market metro (outside RES list)"]["opportunities"] == 1
+    core = geo["Core markets overall"]
+    assert core["leads"] == 6 and core["qualified_incl_opps"] == 4
+    assert geo["Outside all lists (rural / out of area)"]["leads"] == 1
+    assert geo["No zip found"]["leads"] == 1 and geo["All leads"]["leads"] == 8
     assert (tmp_path / f"funnel_{window.label}_summary.md").exists()
 
 
@@ -86,7 +93,7 @@ def test_trash_is_unqualified(tmp_path):
     fake_fub.PEOPLE[:] = [
         fake_fub.person(300, "2026-09-29T18:00:00Z", stage="Trash", addresses=[{"code": "85004"}]),
         fake_fub.person(301, "2026-09-29T17:00:00Z", stage="Trash", addresses=[{"code": "59001"}]),
-        fake_fub.person(302, "2026-09-29T16:00:00Z", addresses=[{"code": "28202"}]),  # Charlotte: not in service
+        fake_fub.person(302, "2026-09-29T16:00:00Z", addresses=[{"code": "28202"}]),  # Charlotte: other preferred metro
     ]
     try:
         s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
@@ -96,5 +103,5 @@ def test_trash_is_unqualified(tmp_path):
     assert rows[300]["status"] == "Unqualified" and rows[300]["primary_unqualified_reason"] == "trash"
     assert rows[301]["primary_unqualified_reason"] == "rural_geo"
     assert rows[301]["all_unqualified_reasons"] == "rural_geo; trash"
-    assert rows[302]["primary_unqualified_reason"] == "rural_geo"
-    assert s["unqualified"] == 3
+    assert rows[302]["status"] == "Qualified" and rows[302]["geo_tier"] == "other_metro"
+    assert s["unqualified"] == 2

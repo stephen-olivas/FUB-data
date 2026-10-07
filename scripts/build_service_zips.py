@@ -25,7 +25,10 @@ def main(xlsx: str) -> None:
         for r in it:
             if not r or r[0] is None:
                 continue
-            z = str(r[0]).strip().split(".")[0].zfill(5)
+            z = str(r[0]).strip().split(".")[0]
+            if not z.isdigit():  # skip summary rows like "Phoenix: 86 zips"
+                continue
+            z = z.zfill(5)
             miles = r[4] if len(r) > 4 and r[4] is not None else ""
             zone = r[5] if len(r) > 5 and r[5] else ""
             rows.append([z, ws.title, r[1] or "", r[2] or "", miles, zone])

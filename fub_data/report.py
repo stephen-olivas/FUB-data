@@ -19,7 +19,7 @@ from .zips import load_service_zips
 
 CSV_COLUMNS = [
     "fub_id", "name", "created_local", "source", "stage", "assigned_to", "contacted",
-    "tags", "zip", "zip_origin", "market", "service_tier", "status", "primary_unqualified_reason",
+    "tags", "zip", "zip_origin", "market", "geo_tier", "status", "primary_unqualified_reason",
     "all_unqualified_reasons", "unqualified_evidence", "opportunity_evidence",
     "review_flags", "activity_errors", "fub_link",
 ]
@@ -34,7 +34,7 @@ def run_report(
     max_leads: int | None = None,
 ) -> dict:
     tz = ZoneInfo(criteria.get("timezone", "America/Los_Angeles"))
-    service_zips = load_service_zips(criteria.get("service_zip_files", []), ROOT)
+    service_zips = load_service_zips(criteria, ROOT)
     kinds = required_activity(criteria) if with_activity else []
     app_url = (os.environ.get("FUB_APP_URL") or criteria.get("fub_app_url") or "").rstrip("/")
 
@@ -66,7 +66,7 @@ def run_report(
             "zip": c.zip or "",
             "zip_origin": c.zip_origin or "",
             "market": c.market or ("" if not c.zip else "outside service area"),
-            "service_tier": c.service_tier or "",
+            "geo_tier": c.geo_tier or "",
             "status": c.status,
             "primary_unqualified_reason": reasons_sorted[0] if reasons_sorted else "",
             "all_unqualified_reasons": "; ".join(reasons_sorted),
@@ -80,7 +80,7 @@ def run_report(
         if i % 25 == 0:
             print(f"  classified {i}/{len(people)} ({client.request_count} API calls)", file=sys.stderr)
 
-    summary = summarize(results, window, rule_order, rule_labels, kinds)
+    summary = summarize(results, window, rule_order, rule_labels, kinds, criteria)
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"funnel_{window.label}"
     with (out_dir / f"{stem}.csv").open("w", newline="") as f:
@@ -102,7 +102,7 @@ def _pct(n: int, d: int) -> str:
     return f"{(100 * n / d):.1f}%" if d else "-"
 
 
-def summarize(results, window: Window, rule_order, rule_labels, kinds) -> dict:
+def summarize(results, window: Window, rule_order, rule_labels, kinds, criteria: dict | None = None) -> dict:
     total = len(results)
     status = Counter(c.status for _, c, _, _ in results)
     primary = Counter(r[0] for _, _, r, _ in results if r)
@@ -113,12 +113,18 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds) -> dict:
     not_contacted = sum(1 for p, c, _, _ in results
                         if c.status == "Qualified" and p.get("contacted") in (0, False, "0", "false"))
 
+    criteria = criteria or {}
+    tiers = criteria.get("geo_tiers") or []
+    tier_labels = {t["id"]: t.get("label", t["id"]) for t in tiers}
     by_market: dict[str, Counter] = defaultdict(Counter)
     by_source: dict[str, Counter] = defaultdict(Counter)
     by_stage: dict[str, Counter] = defaultdict(Counter)
     for p, c, _, _ in results:
         by_stage[p.get("stage") or "(none)"][c.status] += 1
-        by_market[c.market or ("outside service area" if c.zip else "no zip")][c.status] += 1
+        if c.market:
+            by_market[f"{c.market} · {tier_labels.get(c.geo_tier, c.geo_tier or '')}"][c.status] += 1
+        else:
+            by_market["outside service area" if c.zip else "no zip"][c.status] += 1
         by_source[p.get("source") or "(none)"][c.status] += 1
 
     return {
@@ -140,10 +146,36 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds) -> dict:
         "unqualified_by_any_reason": {rule_labels[r]: any_reason[r] for r in rule_order},
         "review_flags": dict(flags),
         "activity_fetch_errors": dict(errors),
+        "by_geography": geography_funnel(results, tiers, criteria.get("core_market_tiers") or []),
         "by_market": {k: dict(v) for k, v in sorted(by_market.items())},
         "by_stage": {k: dict(v) for k, v in sorted(by_stage.items(), key=lambda kv: -sum(kv[1].values()))},
         "by_source": {k: dict(v) for k, v in sorted(by_source.items(), key=lambda kv: -sum(kv[1].values()))},
     }
+
+
+def _segment(name: str, members) -> dict:
+    st = Counter(c.status for _, c, _, _ in members)
+    q = st["Qualified"] + st["Opportunity"]
+    n = len(members)
+    return {"segment": name, "leads": n, "unqualified": st["Unqualified"], "qualified_incl_opps": q,
+            "opportunities": st["Opportunity"], "qualified_rate": _pct(q, n),
+            "opportunity_of_qualified": _pct(st["Opportunity"], q)}
+
+
+def geography_funnel(results, tiers: list[dict], core_tiers: list[str]) -> list[dict]:
+    """Funnel per geo tier, plus 'core markets overall' and out-of-area rows."""
+    out = []
+    for t in tiers:
+        out.append(_segment(t.get("label", t["id"]), [r for r in results if r[1].geo_tier == t["id"]]))
+        # after the last core tier, add the rolled-up core-markets row
+        if core_tiers and t["id"] == core_tiers[-1] and len(core_tiers) > 1:
+            out.append(_segment("Core markets overall",
+                                [r for r in results if r[1].geo_tier in core_tiers]))
+    out.append(_segment("Outside all lists (rural / out of area)",
+                        [r for r in results if r[1].zip and not r[1].geo_tier]))
+    out.append(_segment("No zip found", [r for r in results if not r[1].zip]))
+    out.append(_segment("All leads", results))
+    return out
 
 
 def summary_markdown(s: dict) -> str:
@@ -169,7 +201,16 @@ def summary_markdown(s: dict) -> str:
     ]
     for label, n in s["unqualified_by_primary_reason"].items():
         lines.append(f"| {label} | {n} | {s['unqualified_by_any_reason'].get(label, 0)} |")
-    lines += ["", "### By market", "| Market | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
+    lines += ["", "### Funnel by geography",
+              "| Segment | Leads | Unqualified | Qualified (incl. opps) | Qualified rate | Opportunity | Opp % of qualified |",
+              "|---|---:|---:|---:|---:|---:|---:|"]
+    for g in s.get("by_geography", []):
+        if g["leads"] == 0 and g["segment"] == "No zip found":
+            continue
+        name = f"**{g['segment']}**" if g["segment"] in ("Core markets overall", "All leads") else g["segment"]
+        lines.append(f"| {name} | {g['leads']} | {g['unqualified']} | {g['qualified_incl_opps']} | "
+                     f"{g['qualified_rate']} | {g['opportunities']} | {g['opportunity_of_qualified']} |")
+    lines += ["", "### By market", "| Market / tier | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
     for m, c in s["by_market"].items():
         lines.append(f"| {m} | {c.get('Unqualified', 0)} | {c.get('Qualified', 0)} | {c.get('Opportunity', 0)} |")
     lines += ["", "### By FUB stage", "| Stage | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
