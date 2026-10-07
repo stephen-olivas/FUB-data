@@ -40,7 +40,6 @@ service_zip_files:
 # Person fields scanned as free text by keyword rules (search_in: fields).
 text_fields:
   - customNotesRedFlags          # 83% populated
-  - customForSaleOnZillow        # 100% populated; values TBD (see zillow_active)
   - customBonusPropertyInfoReport
 
 # Only scan the lead's own (inbound) texts, so a rep's outbound
@@ -55,11 +54,12 @@ enrichment:
 unqualified:
   - id: zillow_active
     label: Already listed / has an agent (active on Zillow)
-    # customForSaleOnZillow is filled on every lead. Once discovery shows its
-    # values, add e.g.  custom_fields: {customForSaleOnZillow: ["Yes"]}
+    # customForSaleOnZillow was "No" on all 562 leads (Sep 7 - Oct 6), so it
+    # never fires today; kept so it starts counting if that field gets filled.
     any_of:
       tags: [active listing, has an agent]
-      custom_fields: {}
+      custom_fields:
+        customForSaleOnZillow: ["Yes"]
       keywords:
         - already listed
         - currently listed
