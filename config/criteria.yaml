@@ -2,8 +2,12 @@
 #
 # Source definition: "RES Early Qualified Definition (WIP - 10/07/26)".
 # FUB has no Qualified / Opportunity stages, so each rule looks for evidence in
-# whatever FUB data actually carries the signal. Run `python fub.py discover`
-# first, then fill in the tags / stages / custom fields it shows are in use.
+# whatever FUB data actually carries the signal.
+#
+# Tuned against discovery 2026-09-07..2026-10-06 (562 leads, all
+# "Bonus Website Form", created via API). Things that discovery showed are
+# empty in this account and are therefore NOT used: background, appointments,
+# deals, event property type.
 #
 # Matchers available inside `any_of` (a rule fires if ANY one finds evidence):
 #   tags:            [..]   tag equals one of these (case-insensitive, exact)
@@ -12,40 +16,49 @@
 #   custom_fields:   {customFieldName: [values]}   value contains any; ["*"] = any non-empty value
 #   property_types:  [..]   property type on a lead event contains any of these
 #   keywords:        [..]   whole-phrase match in text (see search_in)
-#   search_in:       [background, notes, texts, events, calls]   (default: all)
+#   search_in:       [background, fields, notes, texts, events, calls]   (default: all)
+#                    "fields" = the person fields listed under text_fields below
 #   zip_outside_service_area: true   property / person zip not in service_zip_files
 #   has_appointment: true   person has at least one FUB appointment
 #   has_deal:        true   person has at least one FUB deal
-#
-# Starter keyword lists below are guesses — tune them against the discovery
-# report and the evidence column in the weekly CSV.
 
 timezone: America/Los_Angeles
 
-# Leads created in the window are pulled from /people. Trash is included by
-# default so the "created" count is complete; the stage column shows it.
+# Leads created in the window are pulled from /people. Trash is included so
+# the "created" count is complete (46% of leads in the discovery window were
+# in Trash); the report breaks results out by stage.
 include_trash: true
 
-# Seller-property zips we can service. Add more CSVs (needs a `zip` column).
+# Seller-property zips we can service. Earlier files win when a zip is in
+# more than one list; the CSV's service_tier column says which list matched.
+#   core_market  - ReSvcs Zips All Core Markets.xlsx (Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs)
+#   preferred    - "Preferred Zip codes - Bonus" sheet, Preferred Zip Codes tab (32 metros)
 service_zip_files:
-  - data/service_zips.csv
+  - data/core_market_zips.csv
+  - data/preferred_zips.csv
+
+# Person fields scanned as free text by keyword rules (search_in: fields).
+text_fields:
+  - customNotesRedFlags          # 83% populated
+  - customForSaleOnZillow        # 100% populated; values TBD (see zillow_active)
+  - customBonusPropertyInfoReport
 
 # Only scan the lead's own (inbound) texts, so a rep's outbound
 # "would you like an intro with an agent?" doesn't count as the lead agreeing.
 texts_inbound_only: true
 
 enrichment:
-  # Per-person endpoints to skip even if a rule could use them (speeds runs up).
+  # Per-person endpoints to skip even if a rule could use them.
   # Options: events, notes, texts, calls, appointments, deals
   skip: []
 
 unqualified:
   - id: zillow_active
-    label: Active on Zillow before reaching FUB
-    # TODO confirm meaning with RES: home already listed / working with a
-    # Zillow agent? Needs a tag, custom field or source that records it.
+    label: Already listed / has an agent (active on Zillow)
+    # customForSaleOnZillow is filled on every lead. Once discovery shows its
+    # values, add e.g.  custom_fields: {customForSaleOnZillow: ["Yes"]}
     any_of:
-      tags: []
+      tags: [active listing, has an agent]
       custom_fields: {}
       keywords:
         - already listed
@@ -54,12 +67,16 @@ unqualified:
         - active on zillow
         - zillow agent
         - working with a zillow
-      search_in: [background, notes, texts, calls]
+        - already have an agent
+        - already has an agent
+        - have a realtor
+      search_in: [fields, notes, texts, calls]
 
   - id: short_sale_or_foreclosure
     label: Short sale or foreclosure
+    # No short-sale / foreclosure tags exist in the account yet.
     any_of:
-      tags: [Short Sale, Foreclosure, Pre-Foreclosure]   # replace with real tag names
+      tags: []
       custom_fields: {}
       keywords:
         - short sale
@@ -70,11 +87,12 @@ unqualified:
         - auction date
         - behind on payments
         - behind on my mortgage
+      search_in: [fields, notes, texts, calls]
 
   - id: licensed_agent
     label: Lead is a licensed agent
     any_of:
-      tags: []   # e.g. [Licensed Agent] once discovery shows the real tag
+      tags: []
       custom_fields: {}
       keywords:
         - licensed agent
@@ -87,18 +105,18 @@ unqualified:
         - lead is a realtor
         - is a licensed
         - real estate license
-      search_in: [background, notes, texts, calls]
+      search_in: [fields, notes, texts, calls]
 
   - id: rural_geo
     label: Rural / unserviceable geography
     any_of:
+      tags: [out of service area]
       zip_outside_service_area: true
 
   - id: specialist_property
     label: Highly unique property needing a specialist
     any_of:
       tags: []
-      property_types: [land, farm, ranch, commercial, mobile, manufactured]
       custom_fields: {}
       keywords:
         - acreage
@@ -110,17 +128,30 @@ unqualified:
         - commercial property
         - mixed use
         - historic home
-      search_in: [background, notes, texts, calls]
+      search_in: [fields, notes, texts, calls]
 
 # Qualified -> Opportunity: the lead agrees to speak to someone about the
-# property ("I would like to intro with an agent").
+# property ("I would like to intro with an agent"). Any stage at or past the
+# agent hand-off counts.
 opportunity:
   label: Agreed to speak with an agent
   any_of:
-    # Replace with the real FUB stage names from the discovery report.
-    stages: [Appt Set, Appt Met, Appointment Set, Appointment Met]
+    stages:
+      - Referred Out/Appointment Set
+      - Appointment Met
+      - Signed Seller
+      - Signed Buyer
+      - Pre Qualified/Showing Homes
+      - Under Contract
+      - Coming Soon Listing
+      - Active Listing
+      - Sourcing Cash Offers
+      - POP Presented
+      - X - Homelight Xfer
+      - Closed
+    custom_fields:
+      customReferralAgent: ["*"]   # a partner agent was assigned
     tags: []
-    has_appointment: true
     keywords:
       - intro with an agent
       - intro to an agent

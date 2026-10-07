@@ -13,7 +13,7 @@ from pathlib import Path
 
 import openpyxl
 
-OUT = Path(__file__).resolve().parent.parent / "data" / "service_zips.csv"
+OUT = Path(__file__).resolve().parent.parent / "data" / "core_market_zips.csv"
 
 
 def main(xlsx: str) -> None:

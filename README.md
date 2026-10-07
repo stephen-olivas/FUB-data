@@ -17,13 +17,13 @@ A lead is **Unqualified** (hard stop) if any of these match:
 
 | Rule id | Meaning | How it's detected today |
 |---|---|---|
-| `zillow_active` | Active on Zillow before reaching FUB | keywords only — **needs a real signal**, see open questions |
-| `short_sale_or_foreclosure` | Home is in short sale or foreclosure | tags + keywords |
-| `licensed_agent` | Lead is a licensed agent | keywords in notes / texts / calls |
-| `rural_geo` | Rural area we can't service | property zip (from lead events, else person address) not in `data/service_zips.csv` |
-| `specialist_property` | Highly unique property needing a specialist | property type on lead events + keywords |
+| `zillow_active` | Already listed / has an agent (active on Zillow) | tags `active listing`, `has an agent` + keywords (incl. `customForSaleOnZillow`, `customNotesRedFlags`) |
+| `short_sale_or_foreclosure` | Home is in short sale or foreclosure | keywords in red-flag notes, notes, texts, calls (no tag exists yet) |
+| `licensed_agent` | Lead is a licensed agent | keywords in red-flag notes, notes, texts, calls |
+| `rural_geo` | Rural area we can't service | tag `out of service area`, or property zip not in the core-market or preferred-market zip lists |
+| `specialist_property` | Highly unique property needing a specialist | keywords |
 
-A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with someone about the property ("I would like to intro with an agent"). Detected by stage, an FUB appointment, or keywords in notes, calls, or the lead's **inbound** texts (a rep's outbound "want an intro?" doesn't count).
+A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with someone about the property ("I would like to intro with an agent"). Detected by stage (`Referred Out/Appointment Set` or anything later), a `Referral Agent` being set, or keywords in notes, calls, or the lead's **inbound** texts (a rep's outbound "want an intro?" doesn't count).
 
 Everything else is **Qualified**. Qualified in the summary includes Opportunities.
 
@@ -71,13 +71,12 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
 - `/people` has no created‑date filter, so the script walks people newest‑first (`sort=-created`, `fields=allFields`, following FUB's `next` token) and keeps the ones created in the window, stopping after 200 consecutive older records.
 - Per lead it only calls the activity endpoints the enabled rules need (events, notes, textMessages, calls, appointments, deals). It honours FUB's `Retry-After` on 429s. Notes are limited to 10 requests / 10 s, so a few hundred leads take a few minutes.
 - Window boundaries use Pacific time (`timezone` in the config).
-- `data/service_zips.csv` is built from *ReSvcs Zips All Core Markets.xlsx* (291 zips: Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs). Add more CSVs under `service_zip_files` to widen the service area.
+- Service area = `data/core_market_zips.csv` (*ReSvcs Zips All Core Markets.xlsx*, 291 zips in Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs) plus `data/preferred_zips.csv` (*Preferred Zip codes - Bonus* sheet, 32 metros). The CSV's `service_tier` column says which list matched.
 
 ## Open questions
 
-- **"Active on Zillow before they hit FUB"** — is this "home is already listed", "already working with a Zillow agent", or a Zillow‑sourced lead? Whatever it is, it needs to be written somewhere in FUB (tag, custom field, source) or checked against a listing feed before the rule can be reliable.
+- **"Active on Zillow before they hit FUB"** — `customForSaleOnZillow` is filled on every lead; the next discovery run shows its values so it can become a direct check.
 - **Licensed agent / unique property** — is there a tag or custom field reps set? Keywords catch notes like "lead is an agent" but will also hit "not in foreclosure"‑style negations; the evidence column makes these easy to spot.
-- **Opportunity stage names** — the config guesses `Appt Set` / `Appt Met`; discovery lists the real ones.
 - **Missing zip** — leads with no property or address zip are not counted as rural; they're flagged `no_zip_found` for review.
 
 ## Tests

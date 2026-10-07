@@ -18,7 +18,7 @@ from typing import Any
 
 from .zips import extract_zips
 
-TEXT_SOURCES = ("background", "notes", "texts", "events", "calls")
+TEXT_SOURCES = ("background", "fields", "notes", "texts", "events", "calls")
 SKIP_KEYS = {"id", "personId", "created", "updated", "url", "sourceUrl", "picture", "userId",
              "createdById", "updatedById", "dealId", "pondId", "phone", "fromNumber", "toNumber"}
 
@@ -29,6 +29,7 @@ class LeadContext:
     activity: dict[str, list[dict]] = field(default_factory=dict)
     service_zips: dict[str, dict] = field(default_factory=dict)
     texts_inbound_only: bool = True
+    text_fields: list[str] = field(default_factory=list)  # person fields searched as "fields"
 
     # cached derived values
     _texts: dict[str, list[str]] | None = None
@@ -42,6 +43,10 @@ class LeadContext:
             bg = self.person.get("background")
             if isinstance(bg, str) and bg.strip():
                 blobs["background"].append(bg)
+            for fname in self.text_fields:
+                val = self.person.get(fname)
+                if isinstance(val, str) and val.strip():
+                    blobs["fields"].append(f"{fname}: {val}")
             for kind in ("notes", "events", "calls"):
                 for rec in self.activity.get(kind, []) or []:
                     blobs[kind].append(_flatten_text(rec))
@@ -172,7 +177,7 @@ def required_activity(criteria: dict) -> list[str]:
     specs.append(criteria.get("opportunity", {}).get("any_of", {}))
     for spec in specs:
         if spec.get("keywords"):
-            need.update(s for s in (spec.get("search_in") or TEXT_SOURCES) if s != "background")
+            need.update(s for s in (spec.get("search_in") or TEXT_SOURCES) if s not in ("background", "fields"))
         if spec.get("property_types") or spec.get("zip_outside_service_area"):
             need.add("events")
         if spec.get("has_appointment"):
@@ -192,6 +197,7 @@ class Classification:
     zip: str | None
     zip_origin: str | None
     market: str | None
+    service_tier: str | None = None  # which zip list matched, e.g. core_market / preferred
 
 
 def classify(ctx: LeadContext, criteria: dict) -> Classification:
@@ -208,7 +214,9 @@ def classify(ctx: LeadContext, criteria: dict) -> Classification:
     flags: list[str] = []
     zips = ctx.zips()
     zip_, origin = (zips[0] if zips else (None, None))
-    market = (ctx.service_zips.get(zip_) or {}).get("market") if zip_ else None
+    zrow = (ctx.service_zips.get(zip_) or {}) if zip_ else {}
+    market = zrow.get("market")
+    tier = zrow["_list"].removesuffix("_zips") if zrow.get("_list") else None
     if not zip_:
         flags.append("no_zip_found")
 
@@ -221,4 +229,4 @@ def classify(ctx: LeadContext, criteria: dict) -> Classification:
     else:
         status = "Qualified"
 
-    return Classification(status, reasons, opp, flags, zip_, origin, market)
+    return Classification(status, reasons, opp, flags, zip_, origin, market, tier)

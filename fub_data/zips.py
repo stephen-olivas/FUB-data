@@ -20,7 +20,7 @@ def load_service_zips(paths: list[str | Path], root: Path) -> dict[str, dict]:
             for row in csv.DictReader(f):
                 z = normalize_zip(row.get("zip"))
                 if z:
-                    zips.setdefault(z, row)
+                    zips.setdefault(z, {**row, "_list": path.stem})
     return zips
 
 

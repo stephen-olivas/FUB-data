@@ -19,7 +19,7 @@ from .zips import load_service_zips
 
 CSV_COLUMNS = [
     "fub_id", "name", "created_local", "source", "stage", "assigned_to", "contacted",
-    "tags", "zip", "zip_origin", "market", "status", "primary_unqualified_reason",
+    "tags", "zip", "zip_origin", "market", "service_tier", "status", "primary_unqualified_reason",
     "all_unqualified_reasons", "unqualified_evidence", "opportunity_evidence",
     "review_flags", "activity_errors", "fub_link",
 ]
@@ -49,7 +49,8 @@ def run_report(
     rows, results = [], []
     for i, p in enumerate(people, 1):
         activity, errors = (fetch_activity(client, p["id"], kinds) if kinds else ({}, {}))
-        ctx = LeadContext(p, activity, service_zips, criteria.get("texts_inbound_only", True))
+        ctx = LeadContext(p, activity, service_zips, criteria.get("texts_inbound_only", True),
+                          criteria.get("text_fields") or [])
         c = classify(ctx, criteria)
         reasons_sorted = [r for r in rule_order if r in c.unqualified_reasons]
         created = parse_ts(p.get("created"))
@@ -60,11 +61,12 @@ def run_report(
             "source": p.get("source") or "",
             "stage": p.get("stage") or "",
             "assigned_to": p.get("assignedTo") or "",
-            "contacted": p.get("contacted"),
+            "contacted": "" if p.get("contacted") is None else ("yes" if p.get("contacted") in (1, True, "1", "true") else "no"),
             "tags": "; ".join(map(str, p.get("tags") or [])),
             "zip": c.zip or "",
             "zip_origin": c.zip_origin or "",
             "market": c.market or ("" if not c.zip else "outside service area"),
+            "service_tier": c.service_tier or "",
             "status": c.status,
             "primary_unqualified_reason": reasons_sorted[0] if reasons_sorted else "",
             "all_unqualified_reasons": "; ".join(reasons_sorted),
@@ -108,11 +110,14 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds) -> dict:
     flags = Counter(f for _, c, _, _ in results for f in c.review_flags)
     errors = Counter(k for *_, e in results for k in e)
     qualified_total = status["Qualified"] + status["Opportunity"]
-    not_contacted = sum(1 for p, c, _, _ in results if c.status == "Qualified" and p.get("contacted") is False)
+    not_contacted = sum(1 for p, c, _, _ in results
+                        if c.status == "Qualified" and p.get("contacted") in (0, False, "0", "false"))
 
     by_market: dict[str, Counter] = defaultdict(Counter)
     by_source: dict[str, Counter] = defaultdict(Counter)
+    by_stage: dict[str, Counter] = defaultdict(Counter)
     for p, c, _, _ in results:
+        by_stage[p.get("stage") or "(none)"][c.status] += 1
         by_market[c.market or ("outside service area" if c.zip else "no zip")][c.status] += 1
         by_source[p.get("source") or "(none)"][c.status] += 1
 
@@ -136,6 +141,7 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds) -> dict:
         "review_flags": dict(flags),
         "activity_fetch_errors": dict(errors),
         "by_market": {k: dict(v) for k, v in sorted(by_market.items())},
+        "by_stage": {k: dict(v) for k, v in sorted(by_stage.items(), key=lambda kv: -sum(kv[1].values()))},
         "by_source": {k: dict(v) for k, v in sorted(by_source.items(), key=lambda kv: -sum(kv[1].values()))},
     }
 
@@ -166,6 +172,9 @@ def summary_markdown(s: dict) -> str:
     lines += ["", "### By market", "| Market | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
     for m, c in s["by_market"].items():
         lines.append(f"| {m} | {c.get('Unqualified', 0)} | {c.get('Qualified', 0)} | {c.get('Opportunity', 0)} |")
+    lines += ["", "### By FUB stage", "| Stage | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
+    for st, c in s["by_stage"].items():
+        lines.append(f"| {st} | {c.get('Unqualified', 0)} | {c.get('Qualified', 0)} | {c.get('Opportunity', 0)} |")
     lines += ["", "### By source (top 15)", "| Source | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
     for src, c in list(s["by_source"].items())[:15]:
         lines.append(f"| {src} | {c.get('Unqualified', 0)} | {c.get('Qualified', 0)} | {c.get('Opportunity', 0)} |")

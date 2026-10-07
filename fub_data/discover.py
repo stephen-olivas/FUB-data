@@ -19,7 +19,7 @@ from pathlib import Path
 from .client import FUBClient
 from .config import ROOT
 from .people import ACTIVITY_ENDPOINTS, fetch_activity, fetch_people_in_window
-from .rules import LeadContext, _keyword_patterns, classify, evaluate_matchers
+from .rules import TEXT_SOURCES, LeadContext, _keyword_patterns, classify, evaluate_matchers
 from .window import Window
 from .zips import extract_zips, load_service_zips
 
@@ -28,6 +28,12 @@ CATEGORICAL_PERSON_FIELDS = {
     "assignedPondId", "assignedLenderName", "dealStatus", "dealStage", "timeframe",
 }
 CATEGORICAL_CF_TYPES = {"dropdown", "multiselect", "checkbox", "select", "boolean", "radio"}
+# Never show values for these (contact details / free-form personal data).
+PII_FIELDS = {"name", "firstName", "lastName", "emails", "phones", "addresses", "picture",
+              "socialData", "collaborators", "background", "customSlackThreadLink", "sourceUrl"}
+# Other fields show their values only when they behave like a category:
+# few distinct values that each repeat (so no single lead's text is exposed).
+MAX_DISTINCT = 25
 TOP_N = 25
 
 
@@ -58,6 +64,30 @@ def _schema(records: list[dict]) -> dict[str, dict]:
                 pop[k] += 1
     return {k: {"populated_pct": round(100 * pop[k] / n, 1) if n else 0, "types": sorted(types[k])}
             for k in sorted(types)}
+
+
+def _show_values(k: str, values: dict[str, Counter], always_show: set[str]) -> bool:
+    if k not in values or not values[k]:
+        return False
+    if k in always_show:
+        return True
+    c = values[k]
+    if k.endswith("Id") or k in ("id", "created", "updated", "lastActivity", "lastLeadActivity"):
+        return False
+    distinct, total = len(c), sum(c.values())
+    return distinct <= MAX_DISTINCT and min(c.values()) >= 2 and distinct <= total / 3
+
+
+def _first_words(c: Counter | None) -> list | None:
+    """For free-text fields: distribution of the first word (letters only), repeated words only."""
+    if not c:
+        return None
+    fw: Counter = Counter()
+    for val, n in c.items():
+        m = re.match(r"\s*([A-Za-z][A-Za-z'/-]{0,14})", val)
+        fw[m.group(1).lower() if m else "(non-text)"] += n
+    top = [(w, n) for w, n in fw.most_common(12) if n >= 3 and w != "(non-text)"]
+    return top or None
 
 
 def run_discovery(
@@ -94,6 +124,7 @@ def run_discovery(
     types: dict[str, set] = defaultdict(set)
     values: dict[str, Counter] = defaultdict(Counter)
     tag_counts: Counter = Counter()
+    always_show: set[str] = set()
     for p in people:
         for k, v in p.items():
             types[k].add(_type(v))
@@ -104,15 +135,19 @@ def run_discovery(
             categorical = (k in CATEGORICAL_PERSON_FIELDS) or (is_cf and cf_types.get(k) in CATEGORICAL_CF_TYPES)
             if k == "tags":
                 tag_counts.update(map(str, v))
-            elif categorical:
+            elif k not in PII_FIELDS and not isinstance(v, dict):
                 vals = v if isinstance(v, list) else [v]
-                values[k].update(map(str, vals))
+                values[k].update(str(x).strip()[:80] for x in vals)
+                if categorical:
+                    always_show.add(k)
     out["person_fields"] = {
         k: {
             "populated_pct": round(100 * coverage[k] / n, 1) if n else 0,
             "types": sorted(types[k]),
             "custom_field_type": cf_types.get(k),
-            "top_values": values[k].most_common(TOP_N) if k in values else None,
+            "distinct_values": len(values[k]) if k in values else None,
+            "top_values": values[k].most_common(TOP_N) if _show_values(k, values, always_show) else None,
+            "top_first_words": _first_words(values.get(k)) if not _show_values(k, values, always_show) else None,
         }
         for k in sorted(types, key=lambda k: (-coverage[k], k))
     }
@@ -151,7 +186,8 @@ def run_discovery(
             if act.get(k):
                 has_any[k] += 1
         errs.update(e.keys())
-        contexts.append(LeadContext(p, act, service, criteria.get("texts_inbound_only", True)))
+        contexts.append(LeadContext(p, act, service, criteria.get("texts_inbound_only", True),
+                                    criteria.get("text_fields") or []))
 
     activity_out = {}
     for k in kinds:
@@ -239,7 +275,7 @@ def rule_preview(criteria: dict, contexts: list[LeadContext]) -> dict:
     for rid, spec in rules:
         fired = sum(1 for c in contexts if evaluate_matchers(spec, c))
         kw_hits = Counter()
-        sources = spec.get("search_in") or ["background", "notes", "texts", "events", "calls"]
+        sources = spec.get("search_in") or list(TEXT_SOURCES)
         for c in contexts:
             blobs = c.text_blobs()
             for kw, pat in _keyword_patterns(spec.get("keywords") or []):
@@ -255,12 +291,15 @@ def discovery_markdown(o: dict) -> str:
     L = [f"# FUB field discovery: leads created {o['window_start'][:10]} to {o['window_end_exclusive'][:10]} (end exclusive)",
          "", f"People in window: **{o['people_in_window']}**  ·  Users: {o['user_count']}", ""]
 
-    L += ["## Person fields (sorted by coverage)", "| Field | Populated | Type | Top values |", "|---|---:|---|---|"]
+    L += ["## Person fields (sorted by coverage)", "| Field | Populated | Distinct | Type | Top values |", "|---|---:|---:|---|---|"]
     for k, v in o["person_fields"].items():
         tv = v["top_values"]
         tv_s = ", ".join(f"{val} ({c})" for val, c in tv[:8]) if tv else ""
+        if not tv and v.get("top_first_words"):
+            tv_s = "first word: " + ", ".join(f"{w} ({c})" for w, c in v["top_first_words"][:8])
         typ = "/".join(v["types"]) + (f" (custom: {v['custom_field_type']})" if v.get("custom_field_type") else "")
-        L.append(f"| `{k}` | {v['populated_pct']}% | {typ} | {_md(tv_s)} |")
+        dv = v.get("distinct_values")
+        L.append(f"| `{k}` | {v['populated_pct']}% | {'' if dv is None else dv} | {typ} | {_md(tv_s)} |")
 
     L += ["", "## Tags used in window", ", ".join(f"{_md(t)} ({c})" for t, c in o["tags"][:60]) or "(none)"]
 
