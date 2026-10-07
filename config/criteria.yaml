@@ -25,17 +25,17 @@
 timezone: America/Los_Angeles
 
 # Leads created in the window are pulled from /people. Trash is included so
-# the "created" count is complete (46% of leads in the discovery window were
-# in Trash); the report breaks results out by stage.
+# the "created" count is complete; Trash leads count as Unqualified (rule
+# `trash` below).
 include_trash: true
 
-# Seller-property zips we can service. Earlier files win when a zip is in
-# more than one list; the CSV's service_tier column says which list matched.
-#   core_market  - ReSvcs Zips All Core Markets.xlsx (Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs)
-#   preferred    - "Preferred Zip codes - Bonus" sheet, Preferred Zip Codes tab (32 metros)
+# Seller-property zips we can service: the 5 RES core markets plus Nashville.
+# The CSV's service_tier column says which list matched.
+#   core_market - ReSvcs Zips All Core Markets.xlsx (Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs)
+#   nashville   - Nashville column of the "Preferred Zip codes - Bonus" sheet
 service_zip_files:
   - data/core_market_zips.csv
-  - data/preferred_zips.csv
+  - data/nashville_zips.csv
 
 # Person fields scanned as free text by keyword rules (search_in: fields).
 text_fields:
@@ -129,6 +129,16 @@ unqualified:
         - mixed use
         - historic home
       search_in: [fields, notes, texts, calls]
+
+  # Last on purpose: a Trash lead that also matches a reason above gets that
+  # reason as its primary one; otherwise Trash is the reason.
+  - id: trash
+    label: Moved to Trash in FUB
+    any_of:
+      stages: [Trash]
+
+# HAP tags (HAP Soft Qualified / Unqualified) belong to a separate program's
+# screening and are intentionally not used here.
 
 # Qualified -> Opportunity: the lead agrees to speak to someone about the
 # property ("I would like to intro with an agent"). Any stage at or past the

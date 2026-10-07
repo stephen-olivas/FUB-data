@@ -20,12 +20,13 @@ A lead is **Unqualified** (hard stop) if any of these match:
 | `zillow_active` | Already listed / has an agent (active on Zillow) | tags `active listing`, `has an agent` + keywords (incl. `customForSaleOnZillow`, `customNotesRedFlags`) |
 | `short_sale_or_foreclosure` | Home is in short sale or foreclosure | keywords in red-flag notes, notes, texts, calls (no tag exists yet) |
 | `licensed_agent` | Lead is a licensed agent | keywords in red-flag notes, notes, texts, calls |
-| `rural_geo` | Rural area we can't service | tag `out of service area`, or property zip not in the core-market or preferred-market zip lists |
+| `rural_geo` | Rural area we can't service | tag `out of service area`, or property zip outside the 5 core markets + Nashville |
+| `trash` | Moved to Trash in FUB | stage `Trash` (only the primary reason when nothing more specific matches) |
 | `specialist_property` | Highly unique property needing a specialist | keywords |
 
 A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with someone about the property ("I would like to intro with an agent"). Detected by stage (`Referred Out/Appointment Set` or anything later), a `Referral Agent` being set, or keywords in notes, calls, or the lead's **inbound** texts (a rep's outbound "want an intro?" doesn't count).
 
-Everything else is **Qualified**. Qualified in the summary includes Opportunities.
+Everything else is **Qualified**. HAP tags (`HAP Soft Qualified` / `HAP Soft Unqualified`) belong to a separate program's screening and are ignored. Qualified in the summary includes Opportunities.
 
 All matching lives in [`config/criteria.yaml`](config/criteria.yaml) — edit that, not the code.
 
@@ -71,7 +72,7 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
 - `/people` has no created‑date filter, so the script walks people newest‑first (`sort=-created`, `fields=allFields`, following FUB's `next` token) and keeps the ones created in the window, stopping after 200 consecutive older records.
 - Per lead it only calls the activity endpoints the enabled rules need (events, notes, textMessages, calls, appointments, deals). It honours FUB's `Retry-After` on 429s. Notes are limited to 10 requests / 10 s, so a few hundred leads take a few minutes.
 - Window boundaries use Pacific time (`timezone` in the config).
-- Service area = `data/core_market_zips.csv` (*ReSvcs Zips All Core Markets.xlsx*, 291 zips in Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs) plus `data/preferred_zips.csv` (*Preferred Zip codes - Bonus* sheet, 32 metros). The CSV's `service_tier` column says which list matched.
+- Service area = `data/core_market_zips.csv` (*ReSvcs Zips All Core Markets.xlsx*, 291 zips in Phoenix, Atlanta, Las Vegas, Denver, Colorado Springs) plus `data/nashville_zips.csv` (Nashville column of the *Preferred Zip codes - Bonus* sheet, 63 zips). The CSV's `service_tier` column says which list matched.
 
 ## Open questions
 

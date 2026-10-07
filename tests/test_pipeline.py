@@ -44,7 +44,7 @@ def test_report_end_to_end(tmp_path):
     assert rows[107]["status"] == "Opportunity"          # inbound text
     assert rows[106]["status"] == "Qualified"            # outbound rep text ignored
     assert rows[105]["status"] == "Opportunity"          # stage
-    assert rows[105]["service_tier"] == "preferred" and rows[105]["market"] == "Nashville"
+    assert rows[105]["service_tier"] == "nashville" and rows[105]["market"] == "Nashville"
     assert rows[103]["primary_unqualified_reason"] == "short_sale_or_foreclosure"  # customNotesRedFlags
     assert rows[110]["service_tier"] == "core_market"
     assert rows[110]["status"] == "Qualified" and rows[110]["market"] == "Phoenix"
@@ -78,3 +78,23 @@ def test_not_contacted_counts_zero(tmp_path):
     finally:
         fake_fub.PEOPLE[:] = orig
     assert s["qualified_not_yet_contacted"] == 1
+
+
+def test_trash_is_unqualified(tmp_path):
+    import fake_fub
+    orig = list(fake_fub.PEOPLE)
+    fake_fub.PEOPLE[:] = [
+        fake_fub.person(300, "2026-09-29T18:00:00Z", stage="Trash", addresses=[{"code": "85004"}]),
+        fake_fub.person(301, "2026-09-29T17:00:00Z", stage="Trash", addresses=[{"code": "59001"}]),
+        fake_fub.person(302, "2026-09-29T16:00:00Z", addresses=[{"code": "28202"}]),  # Charlotte: not in service
+    ]
+    try:
+        s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
+    finally:
+        fake_fub.PEOPLE[:] = orig
+    rows = {int(r["fub_id"]): r for r in csv.DictReader(open(tmp_path / "funnel_2026-09-28_to_2026-10-04.csv"))}
+    assert rows[300]["status"] == "Unqualified" and rows[300]["primary_unqualified_reason"] == "trash"
+    assert rows[301]["primary_unqualified_reason"] == "rural_geo"
+    assert rows[301]["all_unqualified_reasons"] == "rural_geo; trash"
+    assert rows[302]["primary_unqualified_reason"] == "rural_geo"
+    assert s["unqualified"] == 3
