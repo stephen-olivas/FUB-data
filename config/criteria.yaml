@@ -1,0 +1,139 @@
+# Qualification criteria for the weekly FUB funnel report.
+#
+# Source definition: "RES Early Qualified Definition (WIP - 10/07/26)".
+# FUB has no Qualified / Opportunity stages, so each rule looks for evidence in
+# whatever FUB data actually carries the signal. Run `python fub.py discover`
+# first, then fill in the tags / stages / custom fields it shows are in use.
+#
+# Matchers available inside `any_of` (a rule fires if ANY one finds evidence):
+#   tags:            [..]   tag equals one of these (case-insensitive, exact)
+#   sources:         [..]   lead source contains any of these
+#   stages:          [..]   stage equals one of these
+#   custom_fields:   {customFieldName: [values]}   value contains any; ["*"] = any non-empty value
+#   property_types:  [..]   property type on a lead event contains any of these
+#   keywords:        [..]   whole-phrase match in text (see search_in)
+#   search_in:       [background, notes, texts, events, calls]   (default: all)
+#   zip_outside_service_area: true   property / person zip not in service_zip_files
+#   has_appointment: true   person has at least one FUB appointment
+#   has_deal:        true   person has at least one FUB deal
+#
+# Starter keyword lists below are guesses — tune them against the discovery
+# report and the evidence column in the weekly CSV.
+
+timezone: America/Los_Angeles
+
+# Leads created in the window are pulled from /people. Trash is included by
+# default so the "created" count is complete; the stage column shows it.
+include_trash: true
+
+# Seller-property zips we can service. Add more CSVs (needs a `zip` column).
+service_zip_files:
+  - data/service_zips.csv
+
+# Only scan the lead's own (inbound) texts, so a rep's outbound
+# "would you like an intro with an agent?" doesn't count as the lead agreeing.
+texts_inbound_only: true
+
+enrichment:
+  # Per-person endpoints to skip even if a rule could use them (speeds runs up).
+  # Options: events, notes, texts, calls, appointments, deals
+  skip: []
+
+unqualified:
+  - id: zillow_active
+    label: Active on Zillow before reaching FUB
+    # TODO confirm meaning with RES: home already listed / working with a
+    # Zillow agent? Needs a tag, custom field or source that records it.
+    any_of:
+      tags: []
+      custom_fields: {}
+      keywords:
+        - already listed
+        - currently listed
+        - listed on zillow
+        - active on zillow
+        - zillow agent
+        - working with a zillow
+      search_in: [background, notes, texts, calls]
+
+  - id: short_sale_or_foreclosure
+    label: Short sale or foreclosure
+    any_of:
+      tags: [Short Sale, Foreclosure, Pre-Foreclosure]   # replace with real tag names
+      custom_fields: {}
+      keywords:
+        - short sale
+        - foreclosure
+        - pre-foreclosure
+        - preforeclosure
+        - notice of default
+        - auction date
+        - behind on payments
+        - behind on my mortgage
+
+  - id: licensed_agent
+    label: Lead is a licensed agent
+    any_of:
+      tags: []   # e.g. [Licensed Agent] once discovery shows the real tag
+      custom_fields: {}
+      keywords:
+        - licensed agent
+        - licensed realtor
+        - i am a realtor
+        - i'm a realtor
+        - i am an agent
+        - i'm an agent
+        - lead is an agent
+        - lead is a realtor
+        - is a licensed
+        - real estate license
+      search_in: [background, notes, texts, calls]
+
+  - id: rural_geo
+    label: Rural / unserviceable geography
+    any_of:
+      zip_outside_service_area: true
+
+  - id: specialist_property
+    label: Highly unique property needing a specialist
+    any_of:
+      tags: []
+      property_types: [land, farm, ranch, commercial, mobile, manufactured]
+      custom_fields: {}
+      keywords:
+        - acreage
+        - horse property
+        - farm land
+        - vacant land
+        - mobile home
+        - manufactured home
+        - commercial property
+        - mixed use
+        - historic home
+      search_in: [background, notes, texts, calls]
+
+# Qualified -> Opportunity: the lead agrees to speak to someone about the
+# property ("I would like to intro with an agent").
+opportunity:
+  label: Agreed to speak with an agent
+  any_of:
+    # Replace with the real FUB stage names from the discovery report.
+    stages: [Appt Set, Appt Met, Appointment Set, Appointment Met]
+    tags: []
+    has_appointment: true
+    keywords:
+      - intro with an agent
+      - intro to an agent
+      - introduce me to an agent
+      - like to intro
+      - speak with an agent
+      - speak to an agent
+      - talk to an agent
+      - talk with an agent
+      - meet with an agent
+      - connect me with an agent
+      - agreed to intro
+      - agreed to speak
+      - ok to intro
+      - okay to intro
+    search_in: [notes, texts, calls]

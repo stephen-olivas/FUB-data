@@ -1,0 +1,7 @@
+# Reports contain lead names and notes — never commit them.
+output/
+__pycache__/
+*.pyc
+.env
+.venv/
+.pytest_cache/
