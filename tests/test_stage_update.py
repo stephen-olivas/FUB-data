@@ -119,3 +119,11 @@ def test_cli_requires_target(tmp_path, monkeypatch):
     p.write_text("fub_id\n19\n")
     monkeypatch.setenv("FUB_API_KEY", "x")
     assert main(["set-stage", str(p)]) == 1
+
+
+def test_pasted_ids_with_expected_stage(tmp_path):
+    c = StageClient(people())
+    res = run_stage_update(c, None, tmp_path / "out", ids="19, 20\n21 99", stage=NEW,
+                           expect_stage=OLD, apply=True)
+    assert c.puts == [(19, {"stage": NEW})]
+    assert res["counts"] == {"updated": 1, "already_set": 1, "skipped": 1, "not_found": 1}
