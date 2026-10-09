@@ -88,6 +88,7 @@ def run_report(
         w.writeheader()
         w.writerows(rows)
     (out_dir / f"{stem}_summary.json").write_text(json.dumps(summary, indent=2, default=str))
+    write_geography_csv(summary, out_dir / f"{stem}_geography.csv")
     md = summary_markdown(summary)
     (out_dir / f"{stem}_summary.md").write_text(md)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -153,29 +154,56 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds, criteria:
     }
 
 
-def _segment(name: str, members) -> dict:
+def _segment(name: str, members, total: int) -> dict:
+    """One geography row. Every rate is out of ALL leads created in the window,
+    because being in the segment is itself part of qualifying."""
     st = Counter(c.status for _, c, _, _ in members)
     q = st["Qualified"] + st["Opportunity"]
     n = len(members)
-    return {"segment": name, "leads": n, "unqualified": st["Unqualified"], "qualified_incl_opps": q,
-            "opportunities": st["Opportunity"], "qualified_rate": _pct(q, n),
-            "opportunity_of_qualified": _pct(st["Opportunity"], q)}
+    return {"segment": name, "total_leads": total,
+            "leads": n, "leads_pct_of_total": _pct(n, total),
+            "unqualified": st["Unqualified"],
+            "qualified_incl_opps": q, "qualified_pct_of_total": _pct(q, total),
+            "opportunities": st["Opportunity"], "opportunities_pct_of_total": _pct(st["Opportunity"], total)}
 
 
 def geography_funnel(results, tiers: list[dict], core_tiers: list[str]) -> list[dict]:
     """Funnel per geo tier, plus 'core markets overall' and out-of-area rows."""
     out = []
+    total = len(results)
     for t in tiers:
-        out.append(_segment(t.get("label", t["id"]), [r for r in results if r[1].geo_tier == t["id"]]))
+        row = _segment(t.get("label", t["id"]), [r for r in results if r[1].geo_tier == t["id"]], total)
+        row["core_market"] = t["id"] in core_tiers
+        out.append(row)
         # after the last core tier, add the rolled-up core-markets row
         if core_tiers and t["id"] == core_tiers[-1] and len(core_tiers) > 1:
-            out.append(_segment("Core markets overall",
-                                [r for r in results if r[1].geo_tier in core_tiers]))
+            row = _segment("Core markets overall", [r for r in results if r[1].geo_tier in core_tiers], total)
+            row["core_market"] = True
+            out.append(row)
     out.append(_segment("Outside all lists (rural / out of area)",
-                        [r for r in results if r[1].zip and not r[1].geo_tier]))
-    out.append(_segment("No zip found", [r for r in results if not r[1].zip]))
-    out.append(_segment("All leads", results))
+                        [r for r in results if r[1].zip and not r[1].geo_tier], total))
+    out.append(_segment("No zip found", [r for r in results if not r[1].zip], total))
+    out.append(_segment("All leads", results, total))
     return out
+
+
+GEO_CSV_COLUMNS = [
+    ("Segment", "segment"), ("Total leads", "total_leads"), ("Leads in segment", "leads"),
+    ("% of total", "leads_pct_of_total"), ("Qualified", "qualified_incl_opps"),
+    ("% of total", "qualified_pct_of_total"), ("Opps", "opportunities"),
+    ("% of total", "opportunities_pct_of_total"),
+]
+
+
+def write_geography_csv(summary: dict, path: Path) -> None:
+    """Shareable table of the core-market rows (RES core, core metro, overall).
+    Pastes cleanly into Sheets / Slack."""
+    with path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([h for h, _ in GEO_CSV_COLUMNS])
+        for g in summary.get("by_geography", []):
+            if g.get("core_market"):
+                w.writerow([g[k] for _, k in GEO_CSV_COLUMNS])
 
 
 def summary_markdown(s: dict) -> str:
@@ -191,7 +219,7 @@ def summary_markdown(s: dict) -> str:
         f"| Leads created | {s['leads_created']} | |",
         f"| Unqualified | {s['unqualified']} | |",
         f"| Qualified (incl. opportunities) | {s['qualified_including_opportunities']} | {s['rates']['qualified_of_created']} of created |",
-        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_qualified']} of qualified |",
+        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_created']} of created |",
         "",
         f"Qualified but not yet contacted in FUB: {s['qualified_not_yet_contacted']}",
         "",
@@ -202,14 +230,16 @@ def summary_markdown(s: dict) -> str:
     for label, n in s["unqualified_by_primary_reason"].items():
         lines.append(f"| {label} | {n} | {s['unqualified_by_any_reason'].get(label, 0)} |")
     lines += ["", "### Funnel by geography",
-              "| Segment | Leads | Unqualified | Qualified (incl. opps) | Qualified rate | Opportunity | Opp % of qualified |",
-              "|---|---:|---:|---:|---:|---:|---:|"]
+              f"Every % is out of all {s['leads_created']} leads created in the window.", "",
+              "| Segment | Total leads | Leads in segment | % of total | Qualified | % of total | Opps | % of total |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for g in s.get("by_geography", []):
-        if g["leads"] == 0 and g["segment"] == "No zip found":
+        if g["segment"] == "All leads" or (g["leads"] == 0 and g["segment"] == "No zip found"):
             continue
-        name = f"**{g['segment']}**" if g["segment"] in ("Core markets overall", "All leads") else g["segment"]
-        lines.append(f"| {name} | {g['leads']} | {g['unqualified']} | {g['qualified_incl_opps']} | "
-                     f"{g['qualified_rate']} | {g['opportunities']} | {g['opportunity_of_qualified']} |")
+        name = f"**{g['segment']}**" if g["segment"] == "Core markets overall" else g["segment"]
+        lines.append(f"| {name} | {g['total_leads']} | {g['leads']} | {g['leads_pct_of_total']} | "
+                     f"{g['qualified_incl_opps']} | {g['qualified_pct_of_total']} | "
+                     f"{g['opportunities']} | {g['opportunities_pct_of_total']} |")
     lines += ["", "### By market", "| Market / tier | Unqualified | Qualified | Opportunity |", "|---|---:|---:|---:|"]
     for m, c in s["by_market"].items():
         lines.append(f"| {m} | {c.get('Unqualified', 0)} | {c.get('Qualified', 0)} | {c.get('Opportunity', 0)} |")

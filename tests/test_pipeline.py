@@ -60,6 +60,12 @@ def test_report_end_to_end(tmp_path):
     assert geo["Core market metro (outside RES list)"]["opportunities"] == 1
     core = geo["Core markets overall"]
     assert core["leads"] == 6 and core["qualified_incl_opps"] == 4
+    # every rate is out of all 8 leads, not out of the segment
+    assert core["leads_pct_of_total"] == "75.0%" and core["qualified_pct_of_total"] == "50.0%"
+    assert geo["RES core zips"]["qualified_pct_of_total"] == "37.5%"
+    geo_csv = list(csv.reader(open(tmp_path / f"funnel_{window.label}_geography.csv")))
+    assert [r[0] for r in geo_csv[1:]] == ["RES core zips", "Core market metro (outside RES list)", "Core markets overall"]
+    assert geo_csv[1][1:] == ["8", "5", "62.5%", "3", "37.5%", "1", "12.5%"]
     assert geo["Outside all lists (rural / out of area)"]["leads"] == 1
     assert geo["No zip found"]["leads"] == 1 and geo["All leads"]["leads"] == 8
     assert (tmp_path / f"funnel_{window.label}_summary.md").exists()

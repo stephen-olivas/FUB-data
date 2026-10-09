@@ -57,7 +57,8 @@ python fub.py report --no-activity          # person fields only, much faster
 Outputs land in `output/` (git‑ignored, because they contain lead names and note snippets):
 
 - `funnel_<window>.csv` — per lead: status, primary + all unqualified reasons, the evidence text that triggered each, opportunity evidence, zip/market, review flags
-- `funnel_<window>_summary.md|json` — counts, rates, breakdown by reason, market and source
+- `funnel_<window>_summary.md|json` — counts, rates, breakdown by reason, geography, market, stage and source
+- `funnel_<window>_geography.csv` — the shareable core-market table (RES core zips, core metro, core markets overall); pastes cleanly into Sheets/Slack
 - `discovery_<window>.md|json` — field coverage, tags, stages, custom fields, activity schemas, config check, rule hit rates
 
 ## Recommended first pass
@@ -81,7 +82,7 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
   | `other_metro` | every other metro on the preferred sheet |
   | *(none)* | rural / out of area → unqualified |
 
-  The summary's **Funnel by geography** table shows each tier, **Core markets overall** (`res_core` + `core_metro`), and all leads. Tiers are set under `geo_tiers` in the config.
+  The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads created** in the window, not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 164 leads = 19.5% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
 
 ## Open questions
 
