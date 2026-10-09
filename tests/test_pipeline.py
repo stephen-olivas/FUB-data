@@ -136,3 +136,33 @@ def test_overflow_leads_are_diverted(tmp_path):
     assert geo["RES core zips"]["qualified_pct_of_total"] == "66.7%"
     md = (tmp_path / "funnel_2026-09-28_to_2026-10-04_summary.md").read_text()
     assert "Diverted to 3rd party" in md and "**Leads sent to RES** | **3**" in md
+
+
+def test_hap_info_requested_needs_sms_review(tmp_path):
+    import fake_fub
+    orig_p, orig_t = list(fake_fub.PEOPLE), dict(fake_fub.ACTIVITY["textMessages"])
+    fake_fub.PEOPLE[:] = [
+        fake_fub.person(500, "2026-09-29T18:00:00Z", stage="HAP Info Requested", addresses=[{"code": "85004"}]),
+        fake_fub.person(501, "2026-09-29T17:00:00Z", stage="HAP Info Requested", addresses=[{"code": "85004"}]),
+        fake_fub.person(502, "2026-09-29T16:00:00Z", stage="Sourcing Cash Offers", addresses=[{"code": "85004"}]),
+    ]
+    fake_fub.ACTIVITY["textMessages"][500] = [
+        {"id": 9, "isIncoming": False, "created": "2026-09-30T10:00:00Z", "message": "Here is the HAP info you asked for"},
+        {"id": 10, "isIncoming": True, "created": "2026-09-30T11:00:00Z", "message": "Thanks, still deciding"},
+    ]
+    fake_fub.ACTIVITY["textMessages"][501] = [
+        {"id": 11, "isIncoming": True, "created": "2026-09-30T11:00:00Z", "message": "Sure, I'd like to talk to an agent"},
+    ]
+    try:
+        s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
+    finally:
+        fake_fub.PEOPLE[:] = orig_p
+        fake_fub.ACTIVITY["textMessages"].clear(); fake_fub.ACTIVITY["textMessages"].update(orig_t)
+    rows = {int(r["fub_id"]): r for r in csv.DictReader(open(tmp_path / "funnel_2026-09-28_to_2026-10-04.csv"))}
+    assert rows[500]["status"] == "Qualified"                         # not automatically an opp
+    assert "hap_info_requested_check_sms" in rows[500]["review_flags"]
+    assert rows[500]["recent_sms"].startswith("[2026-09-30 US] Here is the HAP info")
+    assert "[2026-09-30 LEAD] Thanks, still deciding" in rows[500]["recent_sms"]
+    assert rows[501]["status"] == "Opportunity" and not rows[501]["review_flags"]   # SMS shows agreement
+    assert rows[502]["status"] == "Opportunity"                       # Sourcing Cash Offers
+    assert s["review_flags"] == {"hap_info_requested_check_sms": 1}

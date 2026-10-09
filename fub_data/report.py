@@ -21,7 +21,7 @@ CSV_COLUMNS = [
     "fub_id", "name", "created_local", "source", "stage", "assigned_to", "contacted",
     "tags", "zip", "zip_origin", "market", "geo_tier", "pool", "status", "primary_unqualified_reason",
     "all_unqualified_reasons", "unqualified_evidence", "opportunity_evidence",
-    "review_flags", "activity_errors", "fub_link",
+    "review_flags", "recent_sms", "activity_errors", "fub_link",
 ]
 
 
@@ -76,6 +76,7 @@ def run_report(
             "unqualified_evidence": " || ".join(f"[{r}] {e}" for r in reasons_sorted for e in c.unqualified_reasons[r]),
             "opportunity_evidence": " || ".join(c.opportunity_evidence),
             "review_flags": "; ".join(c.review_flags),
+            "recent_sms": _recent_sms(activity.get("texts")) if c.review_flags else "",
             "activity_errors": "; ".join(f"{k}: {v[:80]}" for k, v in errors.items()),
             "fub_link": f"{app_url}/2/people/view/{p.get('id')}" if app_url else "",
         })
@@ -103,6 +104,19 @@ def run_report(
     print(md)
     print(f"\nWrote {out_dir / stem}.csv", file=sys.stderr)
     return summary
+
+
+def _recent_sms(texts: list[dict] | None, n: int = 6, width: int = 160) -> str:
+    """Last few texts, oldest first, labeled by direction - for leads flagged for review."""
+    if not texts:
+        return ""
+    msgs = sorted(texts, key=lambda t: t.get("created") or "")[-n:]
+    out = []
+    for t in msgs:
+        who = "LEAD" if t.get("isIncoming") else "US"
+        body = " ".join(str(t.get("message") or "").split())[:width]
+        out.append(f"[{(t.get('created') or '')[:10]} {who}] {body}")
+    return " || ".join(out)
 
 
 def _pct(n: int, d: int) -> str:

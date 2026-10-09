@@ -26,6 +26,8 @@ A lead is **Unqualified** (hard stop) if any of these match:
 
 A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with someone about the property ("I would like to intro with an agent"). Detected by stage (`Referred Out/Appointment Set` or anything later), a `Referral Agent` being set, or keywords in notes, calls, or the lead's **inbound** texts (a rep's outbound "want an intro?" doesn't count).
 
+Leads in **HAP Info Requested** are *not* automatically opportunities: they may still be on the HAP side, or a referral may be under discussion. They're flagged `hap_info_requested_check_sms` and their last few texts appear in the CSV's `recent_sms` column for a quick read (unless their own texts already show they agreed to talk to an agent, in which case they count as an Opportunity). Configured under `review_stages`.
+
 Leads tagged `Bonus Overflow Lead` are diverted to a 3rd party and never sent to RES, so they're shown as their own line and left out of every RES total and rate (`diverted_tags` in the config).
 
 Everything else is **Qualified**. HAP tags (`HAP Soft Qualified` / `HAP Soft Unqualified`) belong to a separate program's screening and are ignored. Qualified in the summary includes Opportunities.

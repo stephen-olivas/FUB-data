@@ -158,6 +158,14 @@ unqualified:
     any_of:
       stages: [Trash]
 
+# Stages that are NOT automatically an opportunity but need someone to read
+# the SMS thread: the lead may still be on the HAP side, or a referral may be
+# under discussion (Cat, 10/9/26). Flagged leads get their recent texts in the
+# CSV's recent_sms column. If the lead's own texts already match an opportunity
+# keyword, it counts as an Opportunity and isn't flagged.
+review_stages:
+  HAP Info Requested: hap_info_requested_check_sms
+
 # HAP tags (HAP Soft Qualified / Unqualified) belong to a separate program's
 # screening and are intentionally not used here.
 
@@ -176,7 +184,7 @@ opportunity:
       - Under Contract
       - Coming Soon Listing
       - Active Listing
-      - Sourcing Cash Offers
+      - Sourcing Cash Offers          # confirmed as an opp by Cat, 10/9/26
       - POP Presented
       - X - Homelight Xfer
       - Closed

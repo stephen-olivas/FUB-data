@@ -220,6 +220,12 @@ def classify(ctx: LeadContext, criteria: dict) -> Classification:
     if not zip_:
         flags.append("no_zip_found")
 
+    # Stages that need a human look at the SMS thread (config: review_stages)
+    stage = (ctx.person.get("stage") or "").lower()
+    for st, flag in (criteria.get("review_stages") or {}).items():
+        if stage == st.lower() and not opp:
+            flags.append(flag)
+
     if reasons:
         status = "Unqualified"
         if opp:
