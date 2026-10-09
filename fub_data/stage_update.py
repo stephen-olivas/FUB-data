@@ -171,6 +171,7 @@ def run_stage_update(
 
     counts: dict[str, int] = {}
     seen: set[int] = set()
+    moved: list[list] = []   # brief list for sharing: leads that moved (or would, in a dry run)
     with out_path.open("w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["sheet_row", "fub_id", "name", "link", "stage_before", "target_stage", "result", "detail"])
@@ -214,6 +215,8 @@ def run_stage_update(
 
             counts[result] = counts.get(result, 0) + 1
             link = f"{app_url}/2/people/view/{r.fub_id}" if app_url and r.fub_id else ""
+            if result in {"updated", "would_update"}:
+                moved.append([r.fub_id, name, target, link])
             w.writerow([r.line, r.fub_id or r.raw_id, name, link, before, target, result, detail])
             f.flush()
             if result in {"error", "not_found", "skipped"}:
@@ -222,6 +225,12 @@ def run_stage_update(
                 print(f"  {n}/{len(rows)} ...", file=sys.stderr)
 
     print("Results: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())), file=sys.stderr)
+    brief_path = out_dir / f"stage_update_{'moved' if apply else 'would_move'}_{stamp}.csv"
+    with brief_path.open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["FUB ID", "Lead", "New stage"] + (["Link"] if app_url else []))
+        for fid, name, target, link in moved:
+            w.writerow([fid, name, target] + ([link] if app_url else []))
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as sf:
@@ -229,6 +238,9 @@ def run_stage_update(
             sf.write(f"{len(rows)} leads from {source}\n\n| Result | Leads |\n|---|---:|\n")
             for k, v in sorted(counts.items()):
                 sf.write(f"| {k} | {v} |\n")
-            sf.write("\nPer-lead results are in the run's artifact.\n")
+            sf.write(f"\nIn the run's artifact: `{brief_path.name}` (ID, lead, new stage; one row per "
+                     f"lead {'moved' if apply else 'that would move'}) and `{out_path.name}` (every row, with skips and errors).\n")
+
     print(f"Wrote {out_path}", file=sys.stderr)
-    return {"counts": counts, "output": str(out_path), "applied": apply}
+    print(f"Wrote {brief_path} ({len(moved)} leads)", file=sys.stderr)
+    return {"counts": counts, "output": str(out_path), "brief": str(brief_path), "applied": apply}

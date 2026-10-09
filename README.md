@@ -92,7 +92,12 @@ Safety checks, per lead:
 - If the sheet has a `Current stage…` column and the lead's stage has changed since the export, it's skipped. `--force` moves it anyway.
 - Rows marked yes/x in a `Done?` column, duplicate IDs and IDs not found in FUB are skipped.
 
-Each run writes `output/stage_update_<dryrun|applied>_<time>.csv` with the stage before, the result and any error for every row. FUB has no bulk endpoint, so it's one `PUT /people/{id}` per lead (~2 requests per lead; 180 leads take about a minute). **Stage changes made through the API fire the same FUB automations and action plans as a manual change**, so check what's tied to the target stage before running a big batch.
+Each run writes two CSVs to `output/` (attached to the GitHub run as an artifact):
+
+- `stage_update_moved_<time>.csv` (`would_move` on a dry run): FUB ID, lead name, new stage and link for each lead that moved; short enough to send on as the "done" list
+- `stage_update_<dryrun|applied>_<time>.csv`: every row with the stage before, the result and any error
+
+FUB has no bulk endpoint, so it's one `PUT /people/{id}` per lead (~2 requests per lead; 180 leads take about a minute). **Stage changes made through the API fire the same FUB automations and action plans as a manual change**, so check what's tied to the target stage before running a big batch.
 
 Keep these sheets out of git (they hold lead names). Drop them in `output/`, which is git-ignored.
 

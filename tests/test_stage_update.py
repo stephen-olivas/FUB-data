@@ -127,3 +127,11 @@ def test_pasted_ids_with_expected_stage(tmp_path):
                            expect_stage=OLD, apply=True)
     assert c.puts == [(19, {"stage": NEW})]
     assert res["counts"] == {"updated": 1, "already_set": 1, "skipped": 1, "not_found": 1}
+
+
+def test_brief_csv_lists_only_moved_leads(tmp_path):
+    c = StageClient(people())
+    res = run_stage_update(c, make_sheet(tmp_path / "s.xlsx"), tmp_path / "out", apply=True)
+    rows = list(csv.DictReader(open(res["brief"])))
+    assert rows == [{"FUB ID": "19", "Lead": "A", "New stage": NEW}]
+    assert "moved" in Path(res["brief"]).name
