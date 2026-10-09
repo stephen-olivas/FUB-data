@@ -124,6 +124,17 @@ Keep these sheets out of git (they hold lead names). Drop them in `output/`, whi
 
   The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads sent to RES** in the window (overflow leads excluded), not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 99 leads sent to RES = 32.3% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
 
+## Call transcripts (checked 2026-10-09)
+
+`python fub.py calls-probe` (Actions → *FUB call transcripts*) is a read-only check of what call data the API returns. On the last 300 calls:
+
+- Calls are logged by FUB Calling (`systemName` "Follow Up Boss" / "Follow Up Boss on iPhone"), so FUB does transcribe them in the app (calls 15 s–60 min, recording on).
+- The API returns **no transcript or summary field**, on either `/calls` or `/calls/{id}`, and `calls/{id}/transcript|transcription|summary|recording` all 404.
+- `recordingUrl` is present but masked: `* Recording URL is hidden for privacy reasons *`, so recordings can't be downloaded to transcribe ourselves.
+- Notes don't carry the AI summaries either.
+
+So transcripts can't currently be pulled through the FUB API, for one lead or many.
+
 ## Open questions
 
 - **"Active on Zillow before they hit FUB"** — `customForSaleOnZillow` is filled on every lead; the next discovery run shows its values so it can become a direct check.
