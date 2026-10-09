@@ -60,7 +60,24 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--out", default=str(ROOT / "output"), help="output folder (git-ignored)")
     s.add_argument("-v", "--verbose", action="store_true")
 
+    cp = sub.add_parser("calls-probe", help="read-only check of what call data (transcripts?) the API returns")
+    cp.add_argument("--ids", help="FUB person IDs to check (default: most recent calls in the account)")
+    cp.add_argument("--max-calls", type=int, default=300, help="calls to scan when --ids is omitted")
+    cp.add_argument("--out", default=str(ROOT / "output"))
+    cp.add_argument("-v", "--verbose", action="store_true")
+
     args = ap.parse_args(argv)
+
+    if args.cmd == "calls-probe":
+        import re as _re
+        from fub_data.calls_probe import run_calls_probe
+        ids = [int(t) for t in _re.split(r"[\s,;]+", args.ids or "") if t.strip().isdigit()] or None
+        try:
+            run_calls_probe(FUBClient(verbose=args.verbose), Path(args.out), ids=ids, max_calls=args.max_calls)
+        except FUBError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if args.cmd == "set-stage":
         from fub_data.stage_update import run_stage_update

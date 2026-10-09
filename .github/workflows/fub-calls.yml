@@ -1,0 +1,52 @@
+name: FUB call transcripts
+
+# Manual only. "probe" is read-only: it reports which call fields the FUB API
+# returns (is there a transcript?) without exporting any call content.
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "probe = check what call data the API returns"
+        type: choice
+        options: [probe]
+        default: probe
+      ids:
+        description: "FUB person IDs to check (blank = most recent calls in the account)"
+        required: false
+      max_calls:
+        description: "Calls to scan when ids is blank"
+        required: false
+        default: "300"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run
+        env:
+          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+          FUB_SYSTEM: ${{ secrets.FUB_SYSTEM }}
+          FUB_SYSTEM_KEY: ${{ secrets.FUB_SYSTEM_KEY }}
+          IDS: ${{ inputs.ids }}
+          MAX_CALLS: ${{ inputs.max_calls }}
+        run: |
+          args=(calls-probe)
+          [ -n "$IDS" ] && args+=(--ids "$IDS")
+          [ -n "$MAX_CALLS" ] && args+=(--max-calls "$MAX_CALLS")
+          python fub.py "${args[@]}" -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fub-calls-${{ github.run_id }}
+          path: output/
+          retention-days: 30
