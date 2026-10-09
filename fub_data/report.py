@@ -19,7 +19,7 @@ from .zips import load_service_zips
 
 CSV_COLUMNS = [
     "fub_id", "name", "created_local", "source", "stage", "assigned_to", "contacted",
-    "tags", "zip", "zip_origin", "market", "geo_tier", "status", "primary_unqualified_reason",
+    "tags", "zip", "zip_origin", "market", "geo_tier", "pool", "status", "primary_unqualified_reason",
     "all_unqualified_reasons", "unqualified_evidence", "opportunity_evidence",
     "review_flags", "activity_errors", "fub_link",
 ]
@@ -46,8 +46,10 @@ def run_report(
 
     rule_order = [r["id"] for r in criteria.get("unqualified", [])]
     rule_labels = {r["id"]: r.get("label", r["id"]) for r in criteria.get("unqualified", [])}
-    rows, results = [], []
+    diverted_tags = {t.lower() for t in criteria.get("diverted_tags") or []}
+    rows, results, diverted = [], [], []
     for i, p in enumerate(people, 1):
+        is_diverted = any(str(t).lower() in diverted_tags for t in p.get("tags") or [])
         activity, errors = (fetch_activity(client, p["id"], kinds) if kinds else ({}, {}))
         ctx = LeadContext(p, activity, service_zips, criteria.get("texts_inbound_only", True),
                           criteria.get("text_fields") or [])
@@ -67,7 +69,8 @@ def run_report(
             "zip_origin": c.zip_origin or "",
             "market": c.market or ("" if not c.zip else "outside service area"),
             "geo_tier": c.geo_tier or "",
-            "status": c.status,
+            "pool": "diverted" if is_diverted else "res",
+            "status": "Diverted (not sent to RES)" if is_diverted else c.status,
             "primary_unqualified_reason": reasons_sorted[0] if reasons_sorted else "",
             "all_unqualified_reasons": "; ".join(reasons_sorted),
             "unqualified_evidence": " || ".join(f"[{r}] {e}" for r in reasons_sorted for e in c.unqualified_reasons[r]),
@@ -76,11 +79,14 @@ def run_report(
             "activity_errors": "; ".join(f"{k}: {v[:80]}" for k, v in errors.items()),
             "fub_link": f"{app_url}/2/people/view/{p.get('id')}" if app_url else "",
         })
-        results.append((p, c, reasons_sorted, errors))
+        (diverted if is_diverted else results).append((p, c, reasons_sorted, errors))
         if i % 25 == 0:
             print(f"  classified {i}/{len(people)} ({client.request_count} API calls)", file=sys.stderr)
 
     summary = summarize(results, window, rule_order, rule_labels, kinds, criteria)
+    summary["leads_created_all"] = len(results) + len(diverted)
+    summary["diverted_not_sent_to_res"] = len(diverted)
+    summary["diverted_tags"] = sorted(criteria.get("diverted_tags") or [])
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"funnel_{window.label}"
     with (out_dir / f"{stem}.csv").open("w", newline="") as f:
@@ -132,7 +138,7 @@ def summarize(results, window: Window, rule_order, rule_labels, kinds, criteria:
         "window_start": window.start.isoformat(),
         "window_end_exclusive": window.end.isoformat(),
         "activity_checked": kinds,
-        "leads_created": total,
+        "leads_created": total,  # leads sent to RES (diverted leads excluded)
         "unqualified": status["Unqualified"],
         "qualified_including_opportunities": qualified_total,
         "qualified_only": status["Qualified"],
@@ -188,7 +194,7 @@ def geography_funnel(results, tiers: list[dict], core_tiers: list[str]) -> list[
 
 
 GEO_CSV_COLUMNS = [
-    ("Segment", "segment"), ("Total leads", "total_leads"), ("Leads in segment", "leads"),
+    ("Segment", "segment"), ("Total leads sent to RES", "total_leads"), ("Leads in segment", "leads"),
     ("% of total", "leads_pct_of_total"), ("Qualified", "qualified_incl_opps"),
     ("% of total", "qualified_pct_of_total"), ("Opps", "opportunities"),
     ("% of total", "opportunities_pct_of_total"),
@@ -216,10 +222,13 @@ def summary_markdown(s: dict) -> str:
         "",
         "| Stage | Count | Rate |",
         "|---|---:|---:|",
-        f"| Leads created | {s['leads_created']} | |",
+        *([f"| All website leads created | {s['leads_created_all']} | |",
+           f"| Diverted to 3rd party ({', '.join(s['diverted_tags'])}) | {s['diverted_not_sent_to_res']} | |"]
+          if s.get("diverted_not_sent_to_res") else []),
+        f"| **Leads sent to RES** | **{s['leads_created']}** | |",
         f"| Unqualified | {s['unqualified']} | |",
-        f"| Qualified (incl. opportunities) | {s['qualified_including_opportunities']} | {s['rates']['qualified_of_created']} of created |",
-        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_created']} of created |",
+        f"| Qualified (incl. opportunities) | {s['qualified_including_opportunities']} | {s['rates']['qualified_of_created']} of sent to RES |",
+        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_created']} of sent to RES |",
         "",
         f"Qualified but not yet contacted in FUB: {s['qualified_not_yet_contacted']}",
         "",
@@ -230,7 +239,7 @@ def summary_markdown(s: dict) -> str:
     for label, n in s["unqualified_by_primary_reason"].items():
         lines.append(f"| {label} | {n} | {s['unqualified_by_any_reason'].get(label, 0)} |")
     lines += ["", "### Funnel by geography",
-              f"Every % is out of all {s['leads_created']} leads created in the window.", "",
+              f"Every % is out of the {s['leads_created']} leads sent to RES in the window.", "",
               "| Segment | Total leads | Leads in segment | % of total | Qualified | % of total | Opps | % of total |",
               "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for g in s.get("by_geography", []):

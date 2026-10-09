@@ -111,3 +111,28 @@ def test_trash_is_unqualified(tmp_path):
     assert rows[301]["all_unqualified_reasons"] == "rural_geo; trash"
     assert rows[302]["status"] == "Qualified" and rows[302]["geo_tier"] == "other_metro"
     assert s["unqualified"] == 2
+
+
+def test_overflow_leads_are_diverted(tmp_path):
+    import fake_fub
+    orig = list(fake_fub.PEOPLE)
+    fake_fub.PEOPLE[:] = [
+        fake_fub.person(400, "2026-09-29T18:00:00Z", addresses=[{"code": "85004"}]),            # RES core, qualified
+        fake_fub.person(401, "2026-09-29T17:00:00Z", addresses=[{"code": "80002"}]),            # RES core, qualified
+        fake_fub.person(402, "2026-09-29T16:00:00Z", stage="Trash", tags=["Bonus Overflow Lead"],
+                        addresses=[{"code": "28202"}]),                                           # diverted
+        fake_fub.person(403, "2026-09-29T15:00:00Z", addresses=[{"code": "59001"}]),            # rural
+    ]
+    try:
+        s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
+    finally:
+        fake_fub.PEOPLE[:] = orig
+    rows = {int(r["fub_id"]): r for r in csv.DictReader(open(tmp_path / "funnel_2026-09-28_to_2026-10-04.csv"))}
+    assert rows[402]["pool"] == "diverted" and rows[402]["status"].startswith("Diverted")
+    assert s["leads_created_all"] == 4 and s["diverted_not_sent_to_res"] == 1
+    assert s["leads_created"] == 3 and s["unqualified"] == 1
+    geo = {g["segment"]: g for g in s["by_geography"]}
+    assert geo["RES core zips"]["total_leads"] == 3
+    assert geo["RES core zips"]["qualified_pct_of_total"] == "66.7%"
+    md = (tmp_path / "funnel_2026-09-28_to_2026-10-04_summary.md").read_text()
+    assert "Diverted to 3rd party" in md and "**Leads sent to RES** | **3**" in md

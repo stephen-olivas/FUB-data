@@ -26,6 +26,8 @@ A lead is **Unqualified** (hard stop) if any of these match:
 
 A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with someone about the property ("I would like to intro with an agent"). Detected by stage (`Referred Out/Appointment Set` or anything later), a `Referral Agent` being set, or keywords in notes, calls, or the lead's **inbound** texts (a rep's outbound "want an intro?" doesn't count).
 
+Leads tagged `Bonus Overflow Lead` are diverted to a 3rd party and never sent to RES, so they're shown as their own line and left out of every RES total and rate (`diverted_tags` in the config).
+
 Everything else is **Qualified**. HAP tags (`HAP Soft Qualified` / `HAP Soft Unqualified`) belong to a separate program's screening and are ignored. Qualified in the summary includes Opportunities.
 
 All matching lives in [`config/criteria.yaml`](config/criteria.yaml) — edit that, not the code.
@@ -82,7 +84,7 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
   | `other_metro` | every other metro on the preferred sheet |
   | *(none)* | rural / out of area → unqualified |
 
-  The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads created** in the window, not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 164 leads = 19.5% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
+  The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads sent to RES** in the window (overflow leads excluded), not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 99 leads sent to RES = 32.3% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
 
 ## Open questions
 

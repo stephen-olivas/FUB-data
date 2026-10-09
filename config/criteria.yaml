@@ -29,6 +29,11 @@ timezone: America/Los_Angeles
 # `trash` below).
 include_trash: true
 
+# Leads with any of these tags are diverted to a 3rd party and never sent to
+# RES (confirmed by Cat, 10/9/26). They're counted on their own line and left
+# out of every RES total and rate.
+diverted_tags: [Bonus Overflow Lead]
+
 # Geography tiers. A lead's property zip takes the FIRST tier it matches;
 # a zip in none of them is rural / out of area (rule `rural_geo`).
 # The report shows the funnel for each tier, plus "core markets overall"
