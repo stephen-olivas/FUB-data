@@ -28,7 +28,7 @@ A non‑unqualified lead becomes an **Opportunity** when it agrees to speak with
 
 Leads in **HAP Info Requested** are *not* automatically opportunities: they may still be on the HAP side, or a referral may be under discussion. They're flagged `hap_info_requested_check_sms` and their last few texts appear in the CSV's `recent_sms` column for a quick read (unless their own texts already show they agreed to talk to an agent, in which case they count as an Opportunity). Configured under `review_stages`.
 
-Leads tagged `Bonus Overflow Lead` are diverted to a 3rd party and never sent to RES, so they're shown as their own line and left out of every RES total and rate (`diverted_tags` in the config).
+Leads tagged `Bonus Overflow Lead` are diverted to a 3rd party, so they're **Unqualified** (rule `overflow`, checked first) but still count in the total lead number. (To drop a tag from the totals entirely instead, list it under `diverted_tags`.)
 
 Everything else is **Qualified**. HAP tags (`HAP Soft Qualified` / `HAP Soft Unqualified`) belong to a separate program's screening and are ignored. Qualified in the summary includes Opportunities.
 
@@ -122,7 +122,7 @@ Keep these sheets out of git (they hold lead names). Drop them in `output/`, whi
   | `other_metro` | every other metro on the preferred sheet |
   | *(none)* | rural / out of area → unqualified |
 
-  The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads sent to RES** in the window (overflow leads excluded), not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 99 leads sent to RES = 32.3% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
+  The summary's **Funnel by geography** table shows each tier and **Core markets overall** (`res_core` + `core_metro`). Every percentage is out of **all leads created** in the window (overflow included), not out of the segment, because being in a core-market zip is part of qualifying (e.g. 32 of 164 leads = 19.5% were RES-core qualified). Tiers are set under `geo_tiers` in the config.
 
 ## Call transcripts (checked 2026-10-09)
 

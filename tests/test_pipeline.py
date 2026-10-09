@@ -113,7 +113,26 @@ def test_trash_is_unqualified(tmp_path):
     assert s["unqualified"] == 2
 
 
-def test_overflow_leads_are_diverted(tmp_path):
+def test_overflow_leads_are_unqualified_but_counted(tmp_path):
+    import fake_fub
+    orig = list(fake_fub.PEOPLE)
+    fake_fub.PEOPLE[:] = [
+        fake_fub.person(600, "2026-09-29T18:00:00Z", addresses=[{"code": "85004"}]),
+        fake_fub.person(601, "2026-09-29T16:00:00Z", stage="Trash", tags=["Bonus Overflow Lead"],
+                        addresses=[{"code": "28202"}]),
+    ]
+    try:
+        s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
+    finally:
+        fake_fub.PEOPLE[:] = orig
+    rows = {int(r["fub_id"]): r for r in csv.DictReader(open(tmp_path / "funnel_2026-09-28_to_2026-10-04.csv"))}
+    assert rows[601]["status"] == "Unqualified" and rows[601]["primary_unqualified_reason"] == "overflow"
+    assert s["leads_created"] == 2 and s["unqualified"] == 1
+    geo = {g["segment"]: g for g in s["by_geography"]}
+    assert geo["RES core zips"]["total_leads"] == 2 and geo["RES core zips"]["qualified_pct_of_total"] == "50.0%"
+
+
+def test_diverted_tags_option(tmp_path):
     import fake_fub
     orig = list(fake_fub.PEOPLE)
     fake_fub.PEOPLE[:] = [
@@ -123,8 +142,10 @@ def test_overflow_leads_are_diverted(tmp_path):
                         addresses=[{"code": "28202"}]),                                           # diverted
         fake_fub.person(403, "2026-09-29T15:00:00Z", addresses=[{"code": "59001"}]),            # rural
     ]
+    crit = load_criteria()
+    crit["diverted_tags"] = ["Bonus Overflow Lead"]
     try:
-        s = run_report(FakeClient(), load_criteria(), build_window("2026-09-28"), tmp_path)
+        s = run_report(FakeClient(), crit, build_window("2026-09-28"), tmp_path)
     finally:
         fake_fub.PEOPLE[:] = orig
     rows = {int(r["fub_id"]): r for r in csv.DictReader(open(tmp_path / "funnel_2026-09-28_to_2026-10-04.csv"))}
@@ -135,7 +156,7 @@ def test_overflow_leads_are_diverted(tmp_path):
     assert geo["RES core zips"]["total_leads"] == 3
     assert geo["RES core zips"]["qualified_pct_of_total"] == "66.7%"
     md = (tmp_path / "funnel_2026-09-28_to_2026-10-04_summary.md").read_text()
-    assert "Diverted to 3rd party" in md and "**Leads sent to RES** | **3**" in md
+    assert "Diverted to 3rd party" in md and "**Total leads** | **3**" in md
 
 
 def test_hap_info_requested_needs_sms_review(tmp_path):

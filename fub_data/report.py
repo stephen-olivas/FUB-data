@@ -208,7 +208,7 @@ def geography_funnel(results, tiers: list[dict], core_tiers: list[str]) -> list[
 
 
 GEO_CSV_COLUMNS = [
-    ("Segment", "segment"), ("Total leads sent to RES", "total_leads"), ("Leads in segment", "leads"),
+    ("Segment", "segment"), ("Total leads", "total_leads"), ("Leads in segment", "leads"),
     ("% of total", "leads_pct_of_total"), ("Qualified", "qualified_incl_opps"),
     ("% of total", "qualified_pct_of_total"), ("Opps", "opportunities"),
     ("% of total", "opportunities_pct_of_total"),
@@ -239,10 +239,10 @@ def summary_markdown(s: dict) -> str:
         *([f"| All website leads created | {s['leads_created_all']} | |",
            f"| Diverted to 3rd party ({', '.join(s['diverted_tags'])}) | {s['diverted_not_sent_to_res']} | |"]
           if s.get("diverted_not_sent_to_res") else []),
-        f"| **Leads sent to RES** | **{s['leads_created']}** | |",
+        f"| **Total leads** | **{s['leads_created']}** | |",
         f"| Unqualified | {s['unqualified']} | |",
-        f"| Qualified (incl. opportunities) | {s['qualified_including_opportunities']} | {s['rates']['qualified_of_created']} of sent to RES |",
-        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_created']} of sent to RES |",
+        f"| Qualified (incl. opportunities) | {s['qualified_including_opportunities']} | {s['rates']['qualified_of_created']} of total |",
+        f"| Opportunity | {s['opportunities']} | {s['rates']['opportunity_of_created']} of total |",
         "",
         f"Qualified but not yet contacted in FUB: {s['qualified_not_yet_contacted']}",
         "",
@@ -253,7 +253,7 @@ def summary_markdown(s: dict) -> str:
     for label, n in s["unqualified_by_primary_reason"].items():
         lines.append(f"| {label} | {n} | {s['unqualified_by_any_reason'].get(label, 0)} |")
     lines += ["", "### Funnel by geography",
-              f"Every % is out of the {s['leads_created']} leads sent to RES in the window.", "",
+              f"Every % is out of the {s['leads_created']} total leads in the window.", "",
               "| Segment | Total leads | Leads in segment | % of total | Qualified | % of total | Opps | % of total |",
               "|---|---:|---:|---:|---:|---:|---:|---:|"]
     for g in s.get("by_geography", []):

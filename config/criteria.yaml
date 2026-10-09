@@ -29,10 +29,10 @@ timezone: America/Los_Angeles
 # `trash` below).
 include_trash: true
 
-# Leads with any of these tags are diverted to a 3rd party and never sent to
-# RES (confirmed by Cat, 10/9/26). They're counted on their own line and left
-# out of every RES total and rate.
-diverted_tags: [Bonus Overflow Lead]
+# Leads with any of these tags are dropped from the RES totals entirely
+# (counted on their own line). Currently unused: overflow leads stay in the
+# total and count as Unqualified instead (rule `overflow` below).
+diverted_tags: []
 
 # Geography tiers. A lead's property zip takes the FIRST tier it matches;
 # a zip in none of them is rural / out of area (rule `rural_geo`).
@@ -73,6 +73,14 @@ enrichment:
   skip: []
 
 unqualified:
+  # First on purpose: overflow leads are "by definition not qualified for RES"
+  # and are diverted to a 3rd party (Cat, 10/9/26). They still count in the
+  # total lead number.
+  - id: overflow
+    label: Bonus Overflow lead (diverted to 3rd party)
+    any_of:
+      tags: [Bonus Overflow Lead]
+
   - id: zillow_active
     label: Already listed / has an agent (active on Zillow)
     # customForSaleOnZillow was "No" on all 562 leads (Sep 7 - Oct 6), so it
