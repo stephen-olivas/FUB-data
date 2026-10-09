@@ -25,6 +25,8 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import requests
+
 from .client import FUBClient, FUBError
 
 INTERESTING = re.compile(r"transcri|summar|record|audio|media|ai|sentiment|recap|note", re.I)
@@ -139,6 +141,25 @@ def run_calls_probe(client: FUBClient, out_dir: Path, ids: list[int] | None = No
                 note_examples.append({"personId": pid, "subject": (n.get("subject") or "")[:80],
                                       "body_chars": len(n.get("body") or ""), "type": n.get("type")})
 
+    # Which phone system logs the calls, and can the recordings be downloaded with the API key?
+    systems = Counter(c.get("systemName") or "(none)" for c in calls)
+    rec_checks = []
+    for c in long_calls[:3]:
+        url = c.get("recordingUrl")
+        if not url:
+            continue
+        info = {"duration": c.get("duration"), "host": re.sub(r"^https?://([^/]+).*", r"\1", url)}
+        for label, getter in (("with_api_key", client.session.get), ("no_auth", requests.get)):
+            try:
+                r = getter(url, stream=True, timeout=30, headers={"Range": "bytes=0-1023"})
+                info[label] = {"status": r.status_code, "type": r.headers.get("Content-Type", ""),
+                               "size": r.headers.get("Content-Range") or r.headers.get("Content-Length"),
+                               "final_host": re.sub(r"^https?://([^/]+).*", r"\1", r.url)}
+                r.close()
+            except Exception as exc:  # noqa: BLE001
+                info[label] = {"error": str(exc)[:150]}
+        rec_checks.append(info)
+
     texty_list = sorted(k for k in list_fields if TEXTY.search(k))
     texty_detail = sorted(k for k in detail_fields if TEXTY.search(k))
     recording = sorted(k for k in set(list_fields) | set(detail_fields) if re.search(r"record", k, re.I))
@@ -158,6 +179,8 @@ def run_calls_probe(client: FUBClient, out_dir: Path, ids: list[int] | None = No
         "detail_samples": detail_samples,
         "sub_endpoints": {s: dict(v) for s, v in sub_hits.items()},
         "notes_mentioning": dict(note_hits),
+        "systems": dict(systems.most_common()),
+        "recording_checks": rec_checks,
         "note_examples": note_examples,
     }
 
@@ -186,6 +209,8 @@ def run_calls_probe(client: FUBClient, out_dir: Path, ids: list[int] | None = No
         notice("Detail fields", "; ".join(f"{k}={n}" for k, n in result["detail_fields"].items()) or "none")
         notice("Interesting detail", json.dumps([s.get("interesting", {}) for s in detail_samples[:3]], default=str))
         notice("Sub-endpoints", json.dumps(result["sub_endpoints"]))
+        notice("Systems", json.dumps(dict(systems.most_common())))
+        notice("Recording download", json.dumps(rec_checks))
         notice("Notes", json.dumps({"mentions": dict(note_hits), "examples": [
             {k: v for k, v in e.items() if k != "subject"} for e in note_examples]}))
     return result

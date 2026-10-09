@@ -18,6 +18,11 @@ class CallsClient(FUBClient):
     def __init__(self):
         self.base_url, self.request_count, self.verbose = "https://fake", 0, False
 
+        class NoNet:
+            def get(self, *a, **k):
+                raise OSError("no network in tests")
+        self.session = NoNet()
+
     def get(self, path, params=None):
         if path == "calls":
             pid = (params or {}).get("personId")
@@ -44,3 +49,18 @@ def test_probe_finds_transcript_field(tmp_path):
 def test_probe_by_ids(tmp_path):
     r = run_calls_probe(CallsClient(), tmp_path, ids=[8])
     assert r["calls_checked"] == 1 and r["calls_20s_plus"] == 0
+
+
+def test_probe_checks_recording_download(tmp_path, monkeypatch):
+    import requests
+
+    class Resp:
+        status_code, headers, url = 200, {"Content-Type": "audio/mpeg", "Content-Length": "1024"}, "https://r/1"
+        def close(self): pass
+
+    c = CallsClient()
+    c.session.get = lambda *a, **k: Resp()
+    monkeypatch.setattr(requests, "get", lambda *a, **k: Resp())
+    r = run_calls_probe(c, tmp_path)
+    assert r["recording_checks"][0]["with_api_key"]["type"] == "audio/mpeg"
+    assert r["systems"] == {"(none)": 2}
