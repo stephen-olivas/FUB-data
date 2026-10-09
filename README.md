@@ -67,9 +67,16 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
 
 ## Bulk stage updates
 
-`set-stage` moves a list of leads to a new stage from a spreadsheet (.xlsx or .csv). It's a dry run unless you add `--apply`.
+`set-stage` moves a list of leads to a new stage. It's a dry run unless you add `--apply`.
+
+**In GitHub:** Actions → *FUB bulk stage update* → *Run workflow*. Paste the FUB IDs into `ids` (commas or spaces), set `stage` and, optionally, `expect_stage` (only leads currently in that stage are moved). Leave `apply` unticked for a dry run, check the counts on the run page, then run again with `apply` ticked. Try `limit` = 3 first if you want to eyeball a few in FUB. Per-lead results are attached to the run as an artifact. Pasting IDs keeps lead names out of the repo; a committed sheet works too via `file`.
+
+**Locally**, from a spreadsheet (.xlsx or .csv) or a list of IDs:
 
 ```bash
+python fub.py set-stage --ids "19, 20, 21" --stage "Resp to Text, Call Made - Not Connected" \
+  --expect-stage "Attempted Contact - Core Lead"                             # preview
+
 python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx --limit 3            # preview the first 3
 python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx                      # preview all
 python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx --limit 3 --apply    # move 3, check them in FUB

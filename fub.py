@@ -7,6 +7,7 @@
   python fub.py report --start 2026-09-28 --end 2026-10-04
   python fub.py set-stage leads.xlsx            # dry run: what would change
   python fub.py set-stage leads.xlsx --apply    # bulk-move leads to the sheet's "Change to" stage
+  python fub.py set-stage --ids "19,20,21" --stage "New stage" --apply
 
 Needs FUB_API_KEY in the environment (optional: FUB_SYSTEM, FUB_SYSTEM_KEY,
 FUB_APP_URL e.g. https://bonushomes.followupboss.com for clickable links).
@@ -47,7 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--max-leads", type=int, help="cap leads processed (for testing)")
 
     s = sub.add_parser("set-stage", help="bulk-update lead stages from a spreadsheet (.xlsx/.csv)")
-    s.add_argument("file", help="sheet with an ID column (e.g. 'Bonus FUB ID') and a 'Change to' column")
+    s.add_argument("file", nargs="?", help="sheet with an ID column (e.g. 'Bonus FUB ID') and a 'Change to' column")
+    s.add_argument("--ids", help="instead of a sheet: FUB person IDs separated by commas/spaces/newlines (needs --stage)")
+    s.add_argument("--expect-stage", help="only move leads currently in this stage (others are skipped unless --force)")
     s.add_argument("--sheet", help="worksheet name (default: first sheet)")
     s.add_argument("--stage", help="move every lead to this stage, ignoring the sheet's 'Change to' column")
     s.add_argument("--apply", action="store_true", help="actually write to FUB (default is a dry run)")
@@ -64,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             client = FUBClient(verbose=args.verbose)
             res = run_stage_update(client, args.file, Path(args.out), sheet=args.sheet, stage=args.stage,
-                                   apply=args.apply, force=args.force, limit=args.limit)
+                                   apply=args.apply, force=args.force, limit=args.limit,
+                                   ids=args.ids, expect_stage=args.expect_stage)
         except (FUBError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1

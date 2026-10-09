@@ -1,0 +1,79 @@
+name: FUB bulk stage update
+
+# Manual only. Defaults to a dry run; tick "apply" to write to FUB.
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: "FUB person IDs, separated by commas or spaces (or leave blank and use 'file')"
+        required: false
+      file:
+        description: "Or: path in the repo to an .xlsx/.csv with an ID column (and optionally 'Change to' / 'Current stage')"
+        required: false
+      stage:
+        description: "Move leads to this stage (required with ids; overrides the sheet's 'Change to')"
+        required: false
+      expect_stage:
+        description: "Only move leads currently in this stage (blank = any stage)"
+        required: false
+      limit:
+        description: "Only process the first N leads (blank = all)"
+        required: false
+      apply:
+        description: "Write to FUB (unticked = dry run)"
+        type: boolean
+        default: false
+      force:
+        description: "Move leads even if their current stage doesn't match the expected stage"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never run two stage updates at the same time.
+concurrency:
+  group: fub-set-stage
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Update stages
+        env:
+          FUB_API_KEY: ${{ secrets.FUB_API_KEY }}
+          FUB_SYSTEM: ${{ secrets.FUB_SYSTEM }}
+          FUB_SYSTEM_KEY: ${{ secrets.FUB_SYSTEM_KEY }}
+          FUB_APP_URL: ${{ vars.FUB_APP_URL }}
+          IDS: ${{ inputs.ids }}
+          FILE: ${{ inputs.file }}
+          STAGE: ${{ inputs.stage }}
+          EXPECT_STAGE: ${{ inputs.expect_stage }}
+          LIMIT: ${{ inputs.limit }}
+          APPLY: ${{ inputs.apply }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          args=(set-stage)
+          if [ -n "$IDS" ]; then args+=(--ids "$IDS");
+          elif [ -n "$FILE" ]; then args+=("$FILE");
+          else echo "::error::Fill in either 'ids' or 'file'."; exit 1; fi
+          [ -n "$STAGE" ] && args+=(--stage "$STAGE")
+          [ -n "$EXPECT_STAGE" ] && args+=(--expect-stage "$EXPECT_STAGE")
+          [ -n "$LIMIT" ] && args+=(--limit "$LIMIT")
+          [ "$APPLY" = "true" ] && args+=(--apply)
+          [ "$FORCE" = "true" ] && args+=(--force)
+          python fub.py "${args[@]}" -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fub-set-stage-${{ github.run_id }}
+          path: output/
+          retention-days: 30

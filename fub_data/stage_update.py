@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -105,6 +106,18 @@ def read_rows(path: str | Path, sheet: str | None = None, stage: str | None = No
     return rows
 
 
+def rows_from_ids(ids: str, stage: str) -> list[Row]:
+    """Rows from a pasted list of IDs (commas, spaces or newlines), e.g. a workflow input."""
+    rows = []
+    for n, raw in enumerate((t for t in re.split(r"[\s,;]+", ids) if t), 1):
+        try:
+            fid = int(float(raw))
+        except ValueError:
+            fid = None
+        rows.append(Row(line=n, fub_id=fid, raw_id=raw, target=stage))
+    return rows
+
+
 def resolve_stages(client: FUBClient, wanted: set[str]) -> dict[str, str]:
     """Map each requested stage name to FUB's exact spelling; raise if any is unknown."""
     names = [s.get("name", "") for s in client.list_all("stages", "stages")]
@@ -120,15 +133,29 @@ def resolve_stages(client: FUBClient, wanted: set[str]) -> dict[str, str]:
 
 def run_stage_update(
     client: FUBClient,
-    path: str | Path,
+    path: str | Path | None,
     out_dir: Path,
     sheet: str | None = None,
     stage: str | None = None,
     apply: bool = False,
     force: bool = False,
     limit: int | None = None,
+    ids: str | None = None,
+    expect_stage: str | None = None,
 ) -> dict:
-    rows = read_rows(path, sheet=sheet, stage=stage)
+    if ids:
+        if not stage:
+            raise ValueError("--ids needs --stage.")
+        rows = rows_from_ids(ids, stage)
+        source = f"{len(rows)} pasted IDs"
+    elif path:
+        rows = read_rows(path, sheet=sheet, stage=stage)
+        source = Path(path).name
+    else:
+        raise ValueError("Give a spreadsheet or --ids.")
+    if expect_stage:
+        for r in rows:
+            r.expected = expect_stage
     if limit:
         rows = rows[:limit]
 
@@ -140,7 +167,7 @@ def run_stage_update(
     out_path = out_dir / f"stage_update_{'applied' if apply else 'dryrun'}_{stamp}.csv"
 
     mode = "APPLYING" if apply else "DRY RUN (no changes; add --apply to write)"
-    print(f"{mode}: {len(rows)} rows from {Path(path).name}", file=sys.stderr)
+    print(f"{mode}: {len(rows)} rows from {source}", file=sys.stderr)
 
     counts: dict[str, int] = {}
     seen: set[int] = set()
@@ -195,5 +222,13 @@ def run_stage_update(
                 print(f"  {n}/{len(rows)} ...", file=sys.stderr)
 
     print("Results: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())), file=sys.stderr)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as sf:
+            sf.write(f"## Stage update: {'applied' if apply else 'dry run (nothing changed)'}\n\n")
+            sf.write(f"{len(rows)} leads from {source}\n\n| Result | Leads |\n|---|---:|\n")
+            for k, v in sorted(counts.items()):
+                sf.write(f"| {k} | {v} |\n")
+            sf.write("\nPer-lead results are in the run's artifact.\n")
     print(f"Wrote {out_path}", file=sys.stderr)
     return {"counts": counts, "output": str(out_path), "applied": apply}
