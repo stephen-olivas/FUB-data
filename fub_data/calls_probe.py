@@ -253,6 +253,10 @@ def run_endpoint_probe(client: FUBClient, person_id: int, out_dir: Path) -> dict
         ("calls", {"personId": person_id, "fields": "allFields"}),
         (f"calls/{cid}", {"fields": "allFields"}),
         (f"calls/{cid}", {"includeTranscript": "true"}),
+        (f"calls/{cid}", {"fields": "transcript"}),
+        (f"calls/{cid}", {"fields": "summary"}),
+        (f"calls/{cid}", {"fields": "transcription"}),
+        (f"calls/{cid}", {"fields": "id,duration"}),
         (f"people/{person_id}/smartSummary", None),
         ("timelineCounts/" + str(person_id), None),
     ]
