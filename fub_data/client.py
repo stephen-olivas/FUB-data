@@ -55,12 +55,12 @@ class FUBClient:
             return path_or_url
         return f"{self.base_url}/{path_or_url.lstrip('/')}"
 
-    def get(self, path: str, params: dict | None = None) -> dict:
+    def _request(self, method: str, path: str, params: dict | None = None, json: dict | None = None) -> dict:
         url = self._url(path)
         backoff = 2.0
         for attempt in range(self.max_retries + 1):
             self.request_count += 1
-            resp = self.session.get(url, params=params, timeout=60)
+            resp = self.session.request(method, url, params=params, json=json, timeout=60)
             if resp.status_code == 429:
                 wait = float(resp.headers.get("Retry-After") or backoff)
                 if self.verbose:
@@ -74,9 +74,15 @@ class FUBClient:
                 backoff = min(backoff * 2, 60)
                 continue
             if resp.status_code >= 400:
-                raise FUBError(f"GET {url} -> {resp.status_code}: {resp.text[:300]}")
-            return resp.json()
-        raise FUBError(f"GET {url} failed after {self.max_retries} retries")
+                raise FUBError(f"{method} {url} -> {resp.status_code}: {resp.text[:300]}")
+            return resp.json() if resp.content else {}
+        raise FUBError(f"{method} {url} failed after {self.max_retries} retries")
+
+    def get(self, path: str, params: dict | None = None) -> dict:
+        return self._request("GET", path, params=params)
+
+    def put(self, path: str, body: dict, params: dict | None = None) -> dict:
+        return self._request("PUT", path, params=params, json=body)
 
     def paginate(
         self,
