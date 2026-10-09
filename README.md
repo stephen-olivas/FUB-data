@@ -65,6 +65,30 @@ Outputs land in `output/` (git‑ignored, because they contain lead names and no
 - `funnel_<window>_geography.csv` — the shareable core-market table (RES core zips, core metro, core markets overall); pastes cleanly into Sheets/Slack
 - `discovery_<window>.md|json` — field coverage, tags, stages, custom fields, activity schemas, config check, rule hit rates
 
+## Bulk stage updates
+
+`set-stage` moves a list of leads to a new stage from a spreadsheet (.xlsx or .csv). It's a dry run unless you add `--apply`.
+
+```bash
+python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx --limit 3            # preview the first 3
+python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx                      # preview all
+python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx --limit 3 --apply    # move 3, check them in FUB
+python fub.py set-stage bonus_fub_ids_resp_to_text.xlsx --apply              # move the rest
+```
+
+The sheet needs an ID column (`Bonus FUB ID`, `FUB ID`, `fub_id`, `Person ID` or `ID`); the header row can sit under a title block. The target stage comes from a `Change to` column (or `New stage` / `Target stage`), or pass `--stage "Stage name"` to move everyone to one stage.
+
+Safety checks, per lead:
+
+- The target stage must exist in FUB (matched case-insensitively), or nothing is written.
+- Leads already at the target are left alone (`already_set`), so re-running after a partial failure only touches what's left.
+- If the sheet has a `Current stage…` column and the lead's stage has changed since the export, it's skipped. `--force` moves it anyway.
+- Rows marked yes/x in a `Done?` column, duplicate IDs and IDs not found in FUB are skipped.
+
+Each run writes `output/stage_update_<dryrun|applied>_<time>.csv` with the stage before, the result and any error for every row. FUB has no bulk endpoint, so it's one `PUT /people/{id}` per lead (~2 requests per lead; 180 leads take about a minute). **Stage changes made through the API fire the same FUB automations and action plans as a manual change**, so check what's tied to the target stage before running a big batch.
+
+Keep these sheets out of git (they hold lead names). Drop them in `output/`, which is git-ignored.
+
 ## Recommended first pass
 
 1. Run `discover` for the last 30 days.

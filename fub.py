@@ -5,6 +5,8 @@
   python fub.py report                      # last complete Mon-Sun week
   python fub.py report --start 2026-09-28   # 7 days starting that date
   python fub.py report --start 2026-09-28 --end 2026-10-04
+  python fub.py set-stage leads.xlsx            # dry run: what would change
+  python fub.py set-stage leads.xlsx --apply    # bulk-move leads to the sheet's "Change to" stage
 
 Needs FUB_API_KEY in the environment (optional: FUB_SYSTEM, FUB_SYSTEM_KEY,
 FUB_APP_URL e.g. https://bonushomes.followupboss.com for clickable links).
@@ -44,7 +46,30 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-activity", action="store_true", help="person fields only (fast, less accurate)")
     r.add_argument("--max-leads", type=int, help="cap leads processed (for testing)")
 
+    s = sub.add_parser("set-stage", help="bulk-update lead stages from a spreadsheet (.xlsx/.csv)")
+    s.add_argument("file", help="sheet with an ID column (e.g. 'Bonus FUB ID') and a 'Change to' column")
+    s.add_argument("--sheet", help="worksheet name (default: first sheet)")
+    s.add_argument("--stage", help="move every lead to this stage, ignoring the sheet's 'Change to' column")
+    s.add_argument("--apply", action="store_true", help="actually write to FUB (default is a dry run)")
+    s.add_argument("--force", action="store_true",
+                   help="move leads even if their stage no longer matches the sheet's 'Current stage' column")
+    s.add_argument("--limit", type=int, help="only process the first N rows (try a few before the full run)")
+    s.add_argument("--out", default=str(ROOT / "output"), help="output folder (git-ignored)")
+    s.add_argument("-v", "--verbose", action="store_true")
+
     args = ap.parse_args(argv)
+
+    if args.cmd == "set-stage":
+        from fub_data.stage_update import run_stage_update
+        try:
+            client = FUBClient(verbose=args.verbose)
+            res = run_stage_update(client, args.file, Path(args.out), sheet=args.sheet, stage=args.stage,
+                                   apply=args.apply, force=args.force, limit=args.limit)
+        except (FUBError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 1 if res["counts"].get("error") else 0
+
     criteria = load_criteria(args.config)
     tz = criteria.get("timezone", "America/Los_Angeles")
 
