@@ -132,6 +132,7 @@ Keep these sheets out of git (they hold lead names). Drop them in `output/`, whi
 - The API returns **no transcript or summary field**, on either `/calls` or `/calls/{id}`, and `calls/{id}/transcript|transcription|summary|recording` all 404.
 - `recordingUrl` is present but masked: `* Recording URL is hidden for privacy reasons *`, so recordings can't be downloaded to transcribe ourselves.
 - Notes don't carry the AI summaries either.
+- The web app gets transcripts from its own `/api/v1/timeline` endpoint (signed-in browser session). With an API key, `GET /v1/timeline` and `/v1/people/{id}/smartSummary` return **403 "You do not have access to this API endpoint"**, and `/v1/calls/{id}?fields=transcript` (or `summary`, `transcription`) returns 400 "Invalid field(s)". `calls-probe --endpoints-for <personId>` reruns these checks.
 
 So transcripts can't currently be pulled through the FUB API, for one lead or many.
 
