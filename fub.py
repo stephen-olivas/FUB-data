@@ -62,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cp = sub.add_parser("calls-probe", help="read-only check of what call data (transcripts?) the API returns")
     cp.add_argument("--ids", help="FUB person IDs to check (default: most recent calls in the account)")
+    cp.add_argument("--endpoints-for", type=int,
+                    help="instead: try the web app's endpoints (timeline etc.) for this one person ID")
     cp.add_argument("--max-calls", type=int, default=300, help="calls to scan when --ids is omitted")
     cp.add_argument("--out", default=str(ROOT / "output"))
     cp.add_argument("-v", "--verbose", action="store_true")
@@ -70,7 +72,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "calls-probe":
         import re as _re
-        from fub_data.calls_probe import run_calls_probe
+        from fub_data.calls_probe import run_calls_probe, run_endpoint_probe
+        if args.endpoints_for:
+            try:
+                run_endpoint_probe(FUBClient(verbose=args.verbose), args.endpoints_for, Path(args.out))
+            except FUBError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+            return 0
         ids = [int(t) for t in _re.split(r"[\s,;]+", args.ids or "") if t.strip().isdigit()] or None
         try:
             run_calls_probe(FUBClient(verbose=args.verbose), Path(args.out), ids=ids, max_calls=args.max_calls)

@@ -64,3 +64,20 @@ def test_probe_checks_recording_download(tmp_path, monkeypatch):
     r = run_calls_probe(c, tmp_path)
     assert r["recording_checks"][0]["with_api_key"]["type"] == "audio/mpeg"
     assert r["systems"] == {"(none)": 2}
+
+
+def test_endpoint_probe_reports_shapes_not_content(tmp_path):
+    from fub_data.calls_probe import run_endpoint_probe
+
+    class C(CallsClient):
+        def get(self, path, params=None):
+            if path == "timeline":
+                return {"timeline": [{"type": "call", "transcript": {"utterances": [{"speaker": "A", "text": "secret"}]}}]}
+            return super().get(path, params)
+
+    out = run_endpoint_probe(C(), 7, tmp_path)
+    tl = out["results"]["timeline?personId=7&limit=25"]
+    assert tl["status"] == 200
+    assert any(f.startswith("timeline[].transcript") for f in tl["matching_fields"])
+    assert "secret" not in json.dumps(out)
+    assert out["results"]["people/7/smartSummary"]["status"] == "404"

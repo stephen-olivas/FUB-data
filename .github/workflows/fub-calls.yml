@@ -13,6 +13,9 @@ on:
       ids:
         description: "FUB person IDs to check (blank = most recent calls in the account)"
         required: false
+      endpoints_for:
+        description: "Instead: try the web app's endpoints (timeline etc.) for this one FUB person ID"
+        required: false
       max_calls:
         description: "Calls to scan when ids is blank"
         required: false
@@ -39,10 +42,12 @@ jobs:
           FUB_SYSTEM_KEY: ${{ secrets.FUB_SYSTEM_KEY }}
           IDS: ${{ inputs.ids }}
           MAX_CALLS: ${{ inputs.max_calls }}
+          ENDPOINTS_FOR: ${{ inputs.endpoints_for }}
         run: |
           args=(calls-probe)
           [ -n "$IDS" ] && args+=(--ids "$IDS")
           [ -n "$MAX_CALLS" ] && args+=(--max-calls "$MAX_CALLS")
+          [ -n "$ENDPOINTS_FOR" ] && args+=(--endpoints-for "$ENDPOINTS_FOR")
           python fub.py "${args[@]}" -v
       - uses: actions/upload-artifact@v4
         if: always()

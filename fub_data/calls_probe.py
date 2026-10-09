@@ -214,3 +214,64 @@ def run_calls_probe(client: FUBClient, out_dir: Path, ids: list[int] | None = No
         notice("Notes", json.dumps({"mentions": dict(note_hits), "examples": [
             {k: v for k, v in e.items() if k != "subject"} for e in note_examples]}))
     return result
+
+
+def _shape(o, d=0):
+    """Structure only: keys, types and string lengths, never values."""
+    if isinstance(o, list):
+        return [_shape(o[0], d + 1), f"len {len(o)}"] if o else []
+    if isinstance(o, dict):
+        return "{…}" if d > 4 else {k: _shape(v, d + 1) for k, v in o.items()}
+    if isinstance(o, str):
+        return f"str({len(o)})"
+    return None if o is None else type(o).__name__
+
+
+def _find_paths(o, pat, path=""):
+    """Paths of keys matching pat, anywhere in the response."""
+    hits = []
+    if isinstance(o, dict):
+        for k, v in o.items():
+            p = f"{path}.{k}" if path else k
+            if pat.search(k):
+                hits.append(f"{p} ({_shape(v) if not isinstance(v, (dict, list)) else type(v).__name__})")
+            hits += _find_paths(v, pat, p)
+    elif isinstance(o, list):
+        for v in o[:50]:
+            hits += _find_paths(v, pat, path + "[]")
+    return sorted(set(hits))
+
+
+def run_endpoint_probe(client: FUBClient, person_id: int, out_dir: Path) -> dict:
+    """Try the endpoints the FUB web app uses (timeline etc.) with the API key, for one lead."""
+    calls = client.list_all("calls", "calls", {"personId": person_id})
+    longest = max(calls, key=_duration, default={})
+    cid = longest.get("id")
+    candidates = [
+        ("timeline", {"personId": person_id, "limit": 25}),
+        ("timeline", {"personId": person_id, "limit": 25, "fields": "allFields"}),
+        ("calls", {"personId": person_id, "fields": "allFields"}),
+        (f"calls/{cid}", {"fields": "allFields"}),
+        (f"calls/{cid}", {"includeTranscript": "true"}),
+        (f"people/{person_id}/smartSummary", None),
+        ("timelineCounts/" + str(person_id), None),
+    ]
+    pat = re.compile(r"transcri|summar|utteran|segment|speaker", re.I)
+    results = {}
+    for path, params in candidates:
+        key = path + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
+        try:
+            j = client.get(path, params)
+            results[key] = {"status": 200, "top_keys": list(j)[:15], "matching_fields": _find_paths(j, pat)[:25]}
+        except FUBError as exc:
+            m = re.search(r"-> (\d{3})", str(exc))
+            results[key] = {"status": m.group(1) if m else "error", "detail": str(exc)[-150:]}
+
+    out = {"person_id": person_id, "longest_call_id": cid, "longest_call_s": longest.get("duration"), "results": results}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / f"endpoint_probe_{person_id}.json").write_text(json.dumps(out, indent=2))
+    print(json.dumps(out, indent=2))
+    if os.environ.get("GITHUB_ACTIONS"):
+        for k, v in results.items():
+            print(f"::notice title={k}::{json.dumps(v)[:900]}")
+    return out
